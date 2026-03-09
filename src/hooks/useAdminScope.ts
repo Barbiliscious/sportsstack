@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -75,53 +75,50 @@ export function useAdminScope(): AdminScope {
   const isSuperAdmin = scopedRoles.some((r) => r.role === "SUPER_ADMIN");
   const isAnyAdmin = scopedRoles.some((r) => ADMIN_ROLES.includes(r.role));
 
-  // Build scoped IDs
-  const scopedAssociationIds: string[] = [];
-  const scopedClubIds: string[] = [];
-  const scopedTeamIds: string[] = [];
+  // Build scoped IDs (memoized to prevent infinite re-render loops)
+  const { scopedAssociationIds, scopedClubIds, scopedTeamIds } = useMemo(() => {
+    const assocIds: string[] = [];
+    const clubIds: string[] = [];
+    const teamIds: string[] = [];
 
-  if (!loading) {
-    if (isSuperAdmin) {
-      // Super admin sees all - we don't populate specific IDs, callers check isSuperAdmin
-    } else {
+    if (!loading && !isSuperAdmin) {
       for (const sr of scopedRoles) {
         if (sr.role === "ASSOCIATION_ADMIN" && sr.association_id) {
-          if (!scopedAssociationIds.includes(sr.association_id)) {
-            scopedAssociationIds.push(sr.association_id);
+          if (!assocIds.includes(sr.association_id)) {
+            assocIds.push(sr.association_id);
           }
-          // Add all clubs under this association
           for (const club of allClubs) {
-            if (club.association_id === sr.association_id && !scopedClubIds.includes(club.id)) {
-              scopedClubIds.push(club.id);
+            if (club.association_id === sr.association_id && !clubIds.includes(club.id)) {
+              clubIds.push(club.id);
             }
           }
-          // Add all teams under those clubs
           for (const team of allTeams) {
             const club = allClubs.find((c) => c.id === team.club_id);
-            if (club && club.association_id === sr.association_id && !scopedTeamIds.includes(team.id)) {
-              scopedTeamIds.push(team.id);
+            if (club && club.association_id === sr.association_id && !teamIds.includes(team.id)) {
+              teamIds.push(team.id);
             }
           }
         }
         if (sr.role === "CLUB_ADMIN" && sr.club_id) {
-          if (!scopedClubIds.includes(sr.club_id)) {
-            scopedClubIds.push(sr.club_id);
+          if (!clubIds.includes(sr.club_id)) {
+            clubIds.push(sr.club_id);
           }
-          // Add all teams under this club
           for (const team of allTeams) {
-            if (team.club_id === sr.club_id && !scopedTeamIds.includes(team.id)) {
-              scopedTeamIds.push(team.id);
+            if (team.club_id === sr.club_id && !teamIds.includes(team.id)) {
+              teamIds.push(team.id);
             }
           }
         }
         if ((sr.role === "TEAM_MANAGER" || sr.role === "COACH") && sr.team_id) {
-          if (!scopedTeamIds.includes(sr.team_id)) {
-            scopedTeamIds.push(sr.team_id);
+          if (!teamIds.includes(sr.team_id)) {
+            teamIds.push(sr.team_id);
           }
         }
       }
     }
-  }
+
+    return { scopedAssociationIds: assocIds, scopedClubIds: clubIds, scopedTeamIds: teamIds };
+  }, [scopedRoles, allClubs, allTeams, loading, isSuperAdmin]);
 
   const canManageAssociation = (id: string) => isSuperAdmin || scopedAssociationIds.includes(id);
   const canManageClub = (id: string) => isSuperAdmin || scopedClubIds.includes(id);
