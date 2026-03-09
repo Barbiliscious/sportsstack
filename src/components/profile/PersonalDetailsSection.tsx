@@ -140,6 +140,49 @@ export const PersonalDetailsSection = ({
           )}
         </div>
 
+        {/* Gender */}
+        <div className="space-y-2">
+          <Label>Gender</Label>
+          {isEditing ? (
+            <Select
+              value={formData.gender}
+              onValueChange={(v) => onFormChange({ gender: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Male">Male</SelectItem>
+                <SelectItem value="Female">Female</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex items-center gap-2 py-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <p className="text-foreground">{formData.gender || "Not set"}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Hockey Victoria Number */}
+        <div className="space-y-2">
+          <Label htmlFor="hv-number">Hockey Victoria Number</Label>
+          {isEditing ? (
+            <Input
+              id="hv-number"
+              value={formData.hockeyVicNumber}
+              onChange={(e) => onFormChange({ hockeyVicNumber: e.target.value })}
+              placeholder="e.g. HV12345"
+            />
+          ) : (
+            <div className="flex items-center gap-2 py-2">
+              <Hash className="h-4 w-4 text-muted-foreground" />
+              <p className="text-foreground">{formData.hockeyVicNumber || "Not set"}</p>
+            </div>
+          )}
+        </div>
+
         {/* Emergency Contact */}
         <div className="space-y-3 pt-2">
           <Label className="flex items-center gap-2">
