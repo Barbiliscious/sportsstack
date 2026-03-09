@@ -161,6 +161,8 @@ const Profile = () => {
         phone: profileData.phone || "",
         suburb: profileData.suburb || "",
         dateOfBirth: profileData.date_of_birth || "",
+        gender: profileData.gender || "",
+        hockeyVicNumber: profileData.hockey_vic_number || "",
         emergencyContact: {
           name: profileData.emergency_contact_name || "",
           phone: profileData.emergency_contact_phone || "",
