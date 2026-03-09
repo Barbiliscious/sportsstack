@@ -26,6 +26,7 @@ import AssociationsManagement from "./pages/admin/AssociationsManagement";
 import ClubsManagement from "./pages/admin/ClubsManagement";
 import TeamsManagement from "./pages/admin/TeamsManagement";
 import UsersManagement from "./pages/admin/UsersManagement";
+import AddPlayer from "./pages/admin/AddPlayer";
 
 // Layout
 import AppLayout from "./components/layout/AppLayout";
@@ -77,6 +78,7 @@ const App = () => (
                       <Route path="/admin/clubs" element={<ClubsManagement />} />
                       <Route path="/admin/teams" element={<TeamsManagement />} />
                       <Route path="/admin/users" element={<UsersManagement />} />
+                      <Route path="/admin/add-player" element={<AddPlayer />} />
                     </Route>
                   </Route>
 

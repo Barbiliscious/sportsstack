@@ -63,6 +63,8 @@ interface ProfileData {
   suburb: string | null;
   date_of_birth: string | null;
   avatar_url: string | null;
+  gender: string | null;
+  hockey_vic_number: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   emergency_contact_relationship: string | null;
@@ -122,6 +124,8 @@ const Profile = () => {
     phone: "",
     suburb: "",
     dateOfBirth: "",
+    gender: "",
+    hockeyVicNumber: "",
     emergencyContact: {
       name: "",
       phone: "",
@@ -157,6 +161,8 @@ const Profile = () => {
         phone: profileData.phone || "",
         suburb: profileData.suburb || "",
         dateOfBirth: profileData.date_of_birth || "",
+        gender: profileData.gender || "",
+        hockeyVicNumber: profileData.hockey_vic_number || "",
         emergencyContact: {
           name: profileData.emergency_contact_name || "",
           phone: profileData.emergency_contact_phone || "",
@@ -290,6 +296,8 @@ const Profile = () => {
         phone: formData.phone || null,
         suburb: formData.suburb || null,
         date_of_birth: formData.dateOfBirth || null,
+        gender: formData.gender || null,
+        hockey_vic_number: formData.hockeyVicNumber || null,
         emergency_contact_name: formData.emergencyContact.name || null,
         emergency_contact_phone: formData.emergencyContact.phone || null,
         emergency_contact_relationship: formData.emergencyContact.relationship || null,

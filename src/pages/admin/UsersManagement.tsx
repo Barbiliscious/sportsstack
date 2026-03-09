@@ -20,7 +20,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
-import { Users, ArrowLeft, Shield, Search, Check, X } from "lucide-react";
+import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminScope } from "@/hooks/useAdminScope";
@@ -270,6 +270,10 @@ const UsersManagement = () => {
           <h1 className="text-3xl font-bold tracking-tight">Users</h1>
           <p className="text-muted-foreground">Manage user profiles, roles, and memberships</p>
         </div>
+        <Button onClick={() => navigate("/admin/add-player")}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Add Player
+        </Button>
       </div>
 
       {/* Filters */}

@@ -334,6 +334,8 @@ export type Database = {
           emergency_contact_phone: string | null
           emergency_contact_relationship: string | null
           first_name: string | null
+          gender: string | null
+          hockey_vic_number: string | null
           id: string
           last_name: string | null
           phone: string | null
@@ -348,6 +350,8 @@ export type Database = {
           emergency_contact_phone?: string | null
           emergency_contact_relationship?: string | null
           first_name?: string | null
+          gender?: string | null
+          hockey_vic_number?: string | null
           id: string
           last_name?: string | null
           phone?: string | null
@@ -362,6 +366,8 @@ export type Database = {
           emergency_contact_phone?: string | null
           emergency_contact_relationship?: string | null
           first_name?: string | null
+          gender?: string | null
+          hockey_vic_number?: string | null
           id?: string
           last_name?: string | null
           phone?: string | null

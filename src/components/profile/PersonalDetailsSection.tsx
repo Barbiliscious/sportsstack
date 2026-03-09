@@ -2,7 +2,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Mail, Phone, MapPin, Calendar, AlertCircle, Save } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Mail, Phone, MapPin, Calendar, AlertCircle, Save, User, Hash } from "lucide-react";
 import type { PlayerProfile, EmergencyContact } from "@/lib/mockData";
 
 interface PersonalDetailsSectionProps {
@@ -13,6 +20,8 @@ interface PersonalDetailsSectionProps {
     phone: string;
     suburb: string;
     dateOfBirth: string;
+    gender: string;
+    hockeyVicNumber: string;
     emergencyContact: EmergencyContact;
   };
   onFormChange: (data: Partial<PersonalDetailsSectionProps["formData"]>) => void;
@@ -127,6 +136,49 @@ export const PersonalDetailsSection = ({
                     })
                   : "Not set"}
               </p>
+            </div>
+          )}
+        </div>
+
+        {/* Gender */}
+        <div className="space-y-2">
+          <Label>Gender</Label>
+          {isEditing ? (
+            <Select
+              value={formData.gender}
+              onValueChange={(v) => onFormChange({ gender: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Male">Male</SelectItem>
+                <SelectItem value="Female">Female</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex items-center gap-2 py-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <p className="text-foreground">{formData.gender || "Not set"}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Hockey Victoria Number */}
+        <div className="space-y-2">
+          <Label htmlFor="hv-number">Hockey Victoria Number</Label>
+          {isEditing ? (
+            <Input
+              id="hv-number"
+              value={formData.hockeyVicNumber}
+              onChange={(e) => onFormChange({ hockeyVicNumber: e.target.value })}
+              placeholder="e.g. HV12345"
+            />
+          ) : (
+            <div className="flex items-center gap-2 py-2">
+              <Hash className="h-4 w-4 text-muted-foreground" />
+              <p className="text-foreground">{formData.hockeyVicNumber || "Not set"}</p>
             </div>
           )}
         </div>
