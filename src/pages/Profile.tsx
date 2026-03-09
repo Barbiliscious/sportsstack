@@ -296,6 +296,8 @@ const Profile = () => {
         phone: formData.phone || null,
         suburb: formData.suburb || null,
         date_of_birth: formData.dateOfBirth || null,
+        gender: formData.gender || null,
+        hockey_vic_number: formData.hockeyVicNumber || null,
         emergency_contact_name: formData.emergencyContact.name || null,
         emergency_contact_phone: formData.emergencyContact.phone || null,
         emergency_contact_relationship: formData.emergencyContact.relationship || null,
