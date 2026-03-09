@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,11 +101,12 @@ export const PersonalDetailsSection = ({
         <div className="space-y-2">
           <Label htmlFor="suburb">Suburb/Address</Label>
           {isEditing ? (
-            <Input
+            <Textarea
               id="suburb"
               value={formData.suburb}
               onChange={(e) => onFormChange({ suburb: e.target.value })}
-              placeholder="Enter your suburb"
+              placeholder="Enter your full address"
+              rows={3}
             />
           ) : (
             <div className="flex items-center gap-2 py-2">

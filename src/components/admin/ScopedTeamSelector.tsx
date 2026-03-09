@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -30,6 +30,7 @@ interface Team {
   id: string;
   name: string;
   club_id: string;
+  division: string | null;
 }
 
 export const ScopedTeamSelector = ({
@@ -49,6 +50,7 @@ export const ScopedTeamSelector = ({
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
   const [selectedClubId, setSelectedClubId] = useState("");
+  const [selectedDivision, setSelectedDivision] = useState("");
 
   // Load reference data
   useEffect(() => {
@@ -56,7 +58,7 @@ export const ScopedTeamSelector = ({
       const [aRes, cRes, tRes] = await Promise.all([
         supabase.from("associations").select("id, name").order("name"),
         supabase.from("clubs").select("id, name, association_id").order("name"),
-        supabase.from("teams").select("id, name, club_id").order("name"),
+        supabase.from("teams").select("id, name, club_id, division").order("name"),
       ]);
       setAssociations(aRes.data || []);
       setClubs(cRes.data || []);
@@ -70,22 +72,20 @@ export const ScopedTeamSelector = ({
     if (scopeLoading || teams.length === 0 || clubs.length === 0) return;
 
     if (!isSuperAdmin) {
-      // If only one scoped association, auto-select it
       if (scopedAssociationIds.length === 1) {
         setSelectedAssociationId(scopedAssociationIds[0]);
       }
-      // If only one scoped club, auto-select it
       if (scopedClubIds.length === 1) {
         setSelectedClubId(scopedClubIds[0]);
         const club = clubs.find((c) => c.id === scopedClubIds[0]);
         if (club) setSelectedAssociationId(club.association_id);
       }
-      // If only one scoped team, auto-select it
       if (scopedTeamIds.length === 1) {
         const team = teams.find((t) => t.id === scopedTeamIds[0]);
         if (team) {
           onTeamChange(team.id);
           setSelectedClubId(team.club_id);
+          if (team.division) setSelectedDivision(team.division);
           const club = clubs.find((c) => c.id === team.club_id);
           if (club) setSelectedAssociationId(club.association_id);
         }
@@ -117,11 +117,26 @@ export const ScopedTeamSelector = ({
     );
   });
 
-  const availableTeams = teams.filter((t) => {
+  // Teams filtered by club and scope (before division filter)
+  const clubFilteredTeams = teams.filter((t) => {
     if (selectedClubId && t.club_id !== selectedClubId) return false;
     if (isSuperAdmin) return true;
     return scopedTeamIds.includes(t.id);
   });
+
+  // Distinct divisions from club-filtered teams
+  const availableDivisions = useMemo(() => {
+    const divs = new Set<string>();
+    clubFilteredTeams.forEach((t) => {
+      if (t.division) divs.add(t.division);
+    });
+    return Array.from(divs).sort();
+  }, [clubFilteredTeams]);
+
+  // Final team list filtered by division
+  const availableTeams = selectedDivision
+    ? clubFilteredTeams.filter((t) => t.division === selectedDivision)
+    : clubFilteredTeams;
 
   const isAssociationLocked =
     !isSuperAdmin && scopedAssociationIds.length === 0 && scopedClubIds.length > 0;
@@ -135,16 +150,23 @@ export const ScopedTeamSelector = ({
   const handleAssociationChange = (id: string) => {
     setSelectedAssociationId(id);
     setSelectedClubId("");
+    setSelectedDivision("");
     onTeamChange("");
   };
 
   const handleClubChange = (id: string) => {
     setSelectedClubId(id);
+    setSelectedDivision("");
+    onTeamChange("");
+  };
+
+  const handleDivisionChange = (div: string) => {
+    setSelectedDivision(div);
     onTeamChange("");
   };
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="space-y-2">
         <Label>Association</Label>
         <Select
@@ -186,7 +208,27 @@ export const ScopedTeamSelector = ({
       </div>
 
       <div className="space-y-2">
-        <Label>Team</Label>
+        <Label>Division</Label>
+        <Select
+          value={selectedDivision}
+          onValueChange={handleDivisionChange}
+          disabled={!selectedClubId || availableDivisions.length === 0}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select division" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableDivisions.map((d) => (
+              <SelectItem key={d} value={d}>
+                {d}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Team Name</Label>
         <Select
           value={selectedTeamId}
           onValueChange={onTeamChange}

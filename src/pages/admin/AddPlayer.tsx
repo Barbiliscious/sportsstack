@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,17 +12,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, UserPlus, Loader2 } from "lucide-react";
+import { ArrowLeft, UserPlus, Loader2, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminScope } from "@/hooks/useAdminScope";
 import { ScopedTeamSelector } from "@/components/admin/ScopedTeamSelector";
 import { supabase } from "@/integrations/supabase/client";
+
+interface AdditionalTeam {
+  id: string;
+  team_id: string;
+  membership_type: "PERMANENT" | "FILL_IN";
+}
 
 const AddPlayer = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { loading: scopeLoading, isAnyAdmin } = useAdminScope();
   const [submitting, setSubmitting] = useState(false);
+
+  const [primaryTeamId, setPrimaryTeamId] = useState("");
+  const [additionalTeams, setAdditionalTeams] = useState<AdditionalTeam[]>([]);
 
   const [form, setForm] = useState({
     email: "",
@@ -35,8 +45,6 @@ const AddPlayer = () => {
     emergency_contact_name: "",
     emergency_contact_phone: "",
     emergency_contact_relationship: "",
-    team_id: "",
-    membership_type: "PRIMARY" as "PRIMARY" | "PERMANENT" | "FILL_IN",
   });
 
   useEffect(() => {
@@ -49,17 +57,41 @@ const AddPlayer = () => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const addAdditionalTeam = () => {
+    setAdditionalTeams((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), team_id: "", membership_type: "PERMANENT" },
+    ]);
+  };
+
+  const removeAdditionalTeam = (id: string) => {
+    setAdditionalTeams((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const updateAdditionalTeam = (id: string, field: "team_id" | "membership_type", value: string) => {
+    setAdditionalTeams((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.email || !form.first_name || !form.last_name || !form.team_id) {
+    if (!form.email || !form.first_name || !form.last_name || !primaryTeamId) {
       toast({
         title: "Missing Fields",
-        description: "Please fill in email, first name, last name, and select a team.",
+        description: "Please fill in email, first name, last name, and select a primary team.",
         variant: "destructive",
       });
       return;
     }
+
+    const teamAssignments = [
+      { team_id: primaryTeamId, membership_type: "PRIMARY" as const },
+      ...additionalTeams
+        .filter((t) => t.team_id)
+        .map((t) => ({ team_id: t.team_id, membership_type: t.membership_type })),
+    ];
 
     setSubmitting(true);
 
@@ -76,8 +108,7 @@ const AddPlayer = () => {
         emergency_contact_name: form.emergency_contact_name || null,
         emergency_contact_phone: form.emergency_contact_phone || null,
         emergency_contact_relationship: form.emergency_contact_relationship || null,
-        team_id: form.team_id,
-        membership_type: form.membership_type,
+        team_assignments: teamAssignments,
       },
     });
 
@@ -103,44 +134,75 @@ const AddPlayer = () => {
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/admin/users")}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Add Player</h1>
-          <p className="text-muted-foreground">Enter player details and assign to a team</p>
+          <p className="text-muted-foreground">Enter player details and assign to teams</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Team Assignment */}
+        {/* Primary Team */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Team Assignment</CardTitle>
+            <CardTitle className="text-lg">Primary Team</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScopedTeamSelector
+              selectedTeamId={primaryTeamId}
+              onTeamChange={setPrimaryTeamId}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Additional Teams */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">Additional Teams</CardTitle>
+            <Button type="button" variant="outline" size="sm" onClick={addAdditionalTeam}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Team
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            <ScopedTeamSelector
-              selectedTeamId={form.team_id}
-              onTeamChange={(id) => updateField("team_id", id)}
-            />
-            <div className="space-y-2">
-              <Label>Membership Type</Label>
-              <Select
-                value={form.membership_type}
-                onValueChange={(v) => updateField("membership_type", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PRIMARY">Primary</SelectItem>
-                  <SelectItem value="PERMANENT">Permanent</SelectItem>
-                  <SelectItem value="FILL_IN">Fill-in</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {additionalTeams.length === 0 && (
+              <p className="text-sm text-muted-foreground">No additional teams assigned.</p>
+            )}
+            {additionalTeams.map((at) => (
+              <div key={at.id} className="space-y-3 p-4 border rounded-lg relative">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 h-7 w-7"
+                  onClick={() => removeAdditionalTeam(at.id)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+                <ScopedTeamSelector
+                  selectedTeamId={at.team_id}
+                  onTeamChange={(id) => updateAdditionalTeam(at.id, "team_id", id)}
+                />
+                <div className="space-y-2 max-w-xs">
+                  <Label>Membership Type</Label>
+                  <Select
+                    value={at.membership_type}
+                    onValueChange={(v) => updateAdditionalTeam(at.id, "membership_type", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PERMANENT">Permanent</SelectItem>
+                      <SelectItem value="FILL_IN">Fill-in</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
 
@@ -204,12 +266,14 @@ const AddPlayer = () => {
                   placeholder="0400 000 000"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="suburb">Suburb/Address</Label>
-                <Input
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="suburb">Address</Label>
+                <Textarea
                   id="suburb"
                   value={form.suburb}
                   onChange={(e) => updateField("suburb", e.target.value)}
+                  placeholder="Enter full address"
+                  rows={3}
                 />
               </div>
             </div>

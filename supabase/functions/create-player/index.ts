@@ -6,6 +6,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+interface TeamAssignment {
+  team_id: string;
+  membership_type: "PRIMARY" | "PERMANENT" | "FILL_IN";
+}
+
 interface PlayerPayload {
   email: string;
   first_name: string;
@@ -18,8 +23,7 @@ interface PlayerPayload {
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   emergency_contact_relationship: string | null;
-  team_id: string;
-  membership_type: "PRIMARY" | "PERMANENT" | "FILL_IN";
+  team_assignments: TeamAssignment[];
 }
 
 const ADMIN_ROLES = ["SUPER_ADMIN", "ASSOCIATION_ADMIN", "CLUB_ADMIN", "TEAM_MANAGER", "COACH"];
@@ -38,7 +42,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Verify caller
     const anonClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -55,24 +58,35 @@ Deno.serve(async (req) => {
     }
 
     const callerId = claimsData.claims.sub as string;
-
-    // Parse body
     const payload: PlayerPayload = await req.json();
 
-    if (!payload.email || !payload.first_name || !payload.last_name || !payload.team_id) {
+    if (!payload.email || !payload.first_name || !payload.last_name) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: email, first_name, last_name, team_id" }),
+        JSON.stringify({ error: "Missing required fields: email, first_name, last_name" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Service role client for admin operations
+    if (!payload.team_assignments || payload.team_assignments.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "At least one team assignment is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const hasPrimary = payload.team_assignments.some((ta) => ta.membership_type === "PRIMARY");
+    if (!hasPrimary) {
+      return new Response(
+        JSON.stringify({ error: "A PRIMARY team assignment is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // --- Scope validation ---
     // Fetch caller's roles
     const { data: callerRoles } = await serviceClient
       .from("user_roles")
@@ -88,61 +102,57 @@ Deno.serve(async (req) => {
 
     const isSuperAdmin = callerRoles.some((r) => r.role === "SUPER_ADMIN");
 
+    // Scope-check each team assignment
     if (!isSuperAdmin) {
-      // Resolve target team's club and association
-      const { data: targetTeam } = await serviceClient
+      const allTeamIds = payload.team_assignments.map((ta) => ta.team_id);
+
+      const { data: targetTeams } = await serviceClient
         .from("teams")
         .select("id, club_id")
-        .eq("id", payload.team_id)
-        .single();
+        .in("id", allTeamIds);
 
-      if (!targetTeam) {
-        return new Response(JSON.stringify({ error: "Team not found" }), {
+      if (!targetTeams || targetTeams.length !== allTeamIds.length) {
+        return new Response(JSON.stringify({ error: "One or more teams not found" }), {
           status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const { data: targetClub } = await serviceClient
+      const clubIds = [...new Set(targetTeams.map((t) => t.club_id))];
+      const { data: targetClubs } = await serviceClient
         .from("clubs")
         .select("id, association_id")
-        .eq("id", targetTeam.club_id)
-        .single();
+        .in("id", clubIds);
 
-      let hasScope = false;
+      const clubMap = new Map((targetClubs || []).map((c) => [c.id, c]));
 
-      for (const cr of callerRoles) {
-        if (!ADMIN_ROLES.includes(cr.role)) continue;
+      for (const tt of targetTeams) {
+        const club = clubMap.get(tt.club_id);
+        let hasScope = false;
 
-        if (cr.role === "ASSOCIATION_ADMIN" && cr.association_id && targetClub) {
-          if (cr.association_id === targetClub.association_id) {
-            hasScope = true;
-            break;
+        for (const cr of callerRoles) {
+          if (!ADMIN_ROLES.includes(cr.role)) continue;
+          if (cr.role === "ASSOCIATION_ADMIN" && cr.association_id && club) {
+            if (cr.association_id === club.association_id) { hasScope = true; break; }
+          }
+          if (cr.role === "CLUB_ADMIN" && cr.club_id) {
+            if (cr.club_id === tt.club_id) { hasScope = true; break; }
+          }
+          if ((cr.role === "TEAM_MANAGER" || cr.role === "COACH") && cr.team_id) {
+            if (cr.team_id === tt.id) { hasScope = true; break; }
           }
         }
-        if (cr.role === "CLUB_ADMIN" && cr.club_id) {
-          if (cr.club_id === targetTeam.club_id) {
-            hasScope = true;
-            break;
-          }
-        }
-        if ((cr.role === "TEAM_MANAGER" || cr.role === "COACH") && cr.team_id) {
-          if (cr.team_id === payload.team_id) {
-            hasScope = true;
-            break;
-          }
-        }
-      }
 
-      if (!hasScope) {
-        return new Response(
-          JSON.stringify({ error: "You do not have permission to add players to this team" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        if (!hasScope) {
+          return new Response(
+            JSON.stringify({ error: `You do not have permission to assign players to team ${tt.id}` }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
     }
 
-    // --- Create auth user ---
+    // Create auth user
     const tempPassword = crypto.randomUUID().slice(0, 16) + "Aa1!";
     const { data: newUser, error: createError } = await serviceClient.auth.admin.createUser({
       email: payload.email,
@@ -159,8 +169,8 @@ Deno.serve(async (req) => {
 
     const userId = newUser.user.id;
 
-    // --- Update profile ---
-    const { error: profileError } = await serviceClient
+    // Update profile
+    await serviceClient
       .from("profiles")
       .update({
         first_name: payload.first_name,
@@ -176,31 +186,20 @@ Deno.serve(async (req) => {
       })
       .eq("id", userId);
 
-    if (profileError) {
-      console.error("Profile update error:", profileError);
-    }
+    // Insert team memberships & player roles for each assignment
+    for (const ta of payload.team_assignments) {
+      await serviceClient.from("team_memberships").insert({
+        user_id: userId,
+        team_id: ta.team_id,
+        membership_type: ta.membership_type,
+        status: "APPROVED",
+      });
 
-    // --- Insert team membership ---
-    const { error: membershipError } = await serviceClient.from("team_memberships").insert({
-      user_id: userId,
-      team_id: payload.team_id,
-      membership_type: payload.membership_type || "PRIMARY",
-      status: "APPROVED",
-    });
-
-    if (membershipError) {
-      console.error("Membership insert error:", membershipError);
-    }
-
-    // --- Insert PLAYER role scoped to team ---
-    const { error: roleError } = await serviceClient.from("user_roles").insert({
-      user_id: userId,
-      role: "PLAYER",
-      team_id: payload.team_id,
-    });
-
-    if (roleError) {
-      console.error("Role insert error:", roleError);
+      await serviceClient.from("user_roles").insert({
+        user_id: userId,
+        role: "PLAYER",
+        team_id: ta.team_id,
+      });
     }
 
     return new Response(
