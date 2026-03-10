@@ -20,7 +20,8 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
-import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus } from "lucide-react";
+import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminScope } from "@/hooks/useAdminScope";
