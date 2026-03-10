@@ -15,6 +15,9 @@ interface PlayerRow {
   hockey_vic_number: string | null;
   phone: string | null;
   suburb: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
   team_id: string;
   row_number: number;
 }
