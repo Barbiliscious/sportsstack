@@ -1,42 +1,47 @@
 
-## Grampians Hockey — Implementation Plan
 
-### Phase 1: 5-Mode App System ✅ COMPLETE
+# Updated Plan: Bulk Import Fields + Export + Navigation Buttons
 
-The app supports 5 operational modes (Super Admin, Association, Club, Team, Player) with role-based navigation, mode switching, and localStorage persistence. See `AppModeContext.tsx`.
+Three related changes to the Users Management and Bulk Import system.
 
-### Phase 2: Data & Import (Current)
+---
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | Sunraysia Hockey Association setup | ✅ Done | SHA + Koowinda, Wanderers, Riverside, Waratahs (6 teams each) |
-| 2 | Team nicknames column | ✅ Done | `nickname` column added to `teams` table |
-| 3 | Admin Add Player form | ✅ Done | Scoped entry form with gender, HV number, team assignment. Edge function `create-player`. New profile columns. `ScopedTeamSelector` reusable component. 4-level cascading selector (Association > Club > Division > Team). Dual-frame Primary + Additional Teams with multi-membership support. |
-| 3b | useAdminScope flickering fix | ✅ Done | Memoized scoped ID arrays to prevent infinite re-render loops |
-| 4 | Bulk player import | ✅ Done | Admin page `/admin/bulk-import` with XLSX upload, preview table, validation. Edge function `bulk-import` with mock email generation and scope validation. |
-| 5 | Bulk fixture import | 🔲 Todo | Resolve club+division to team_id, insert into `games`. Reuses `ScopedTeamSelector`. |
-| 6 | Fixture export | 🔲 Todo | Export scoped fixtures to CSV/PDF |
-| 7 | Player exceptions / compliance | 🔲 Todo | `player_exceptions` table, age checks, missing data flags |
+## 1. Add Bulk Import & Export buttons to Users Management page
 
-### Phase 3: Competition Features
+**File: `src/pages/admin/UsersManagement.tsx`**
+- Add two buttons next to the existing "Add Player" button:
+  - **Bulk Import** (FileSpreadsheet icon) — navigates to `/admin/bulk-import`
+  - **Export** (Download icon) — exports `filteredUsers` to XLSX
+- Export function uses the already-installed `xlsx` library
+- Export columns: Registration # (sequential 1, 2, 3…), First Name, Last Name, Email, Gender, DOB, Hockey Vic Number, Phone, Suburb, Club, Team, Division, Membership Status, Emergency Contact Name, Emergency Contact Phone, Emergency Contact Relationship
+- Club and Division resolved from the existing `teams`/`clubs` reference data already loaded in the component
+- Requires expanding `fetchUsers` to also select emergency contact fields from profiles (currently uses `select("*")` so they're already fetched)
+- Filename: `players-export-YYYY-MM-DD.xlsx`
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 8 | Seasons + standings | 🔲 Todo | `seasons` table, `season_id` on games, ladder page |
-| 9 | Player statistics | 🔲 Todo | `player_game_stats` table, goals/cards/BOG, leaderboard |
+## 2. Expand Bulk Import to include all profile fields
 
-### Phase 4: Polish & UX
+**File: `src/pages/admin/BulkImport.tsx`**
+- Add to `ParsedRow` interface: `emergency_contact_name`, `emergency_contact_phone`, `emergency_contact_relationship`
+- Add header mappings: "Emergency Contact Name" / "EC Name", "Emergency Contact Phone" / "EC Phone", "Emergency Contact Relationship" / "EC Relationship"
+- Update the expected columns documentation text
+- Pass new fields through in `handleSubmit` payload
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 10 | Club branding in player UI | 🔲 Todo | Wire `primary_colour`, `logo_url` etc. into dashboards |
-| 11 | Dark mode toggle | 🔲 Todo | `next-themes` already installed, needs wiring |
-| 12 | Audit log | 🔲 Todo | `audit_log` table for admin action tracking |
+**File: `supabase/functions/bulk-import/index.ts`**
+- Add `emergency_contact_name`, `emergency_contact_phone`, `emergency_contact_relationship` to `PlayerRow` interface
+- Include these fields in the `profiles.update()` call (lines 172-180)
 
-### Database Structure
+## 3. Update plan.md
 
-- **Associations**: Hockey Ballarat, Wimmera Hockey Association, Sunraysia Hockey Association
-- **Clubs per association**: 4-6 clubs each, with 6 standard teams per club
-- **Team divisions**: Division 1 Open, Division 1 Women, Under 11, Under 12, Under 14, Under 16
-- **Roles**: SUPER_ADMIN, ASSOCIATION_ADMIN, CLUB_ADMIN, TEAM_MANAGER, COACH, PLAYER
-- **Profile columns**: first_name, last_name, phone, suburb, date_of_birth, gender, hockey_vic_number, emergency contact fields, avatar_url
+Mark the export and bulk import enhancements as done.
+
+---
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/pages/admin/UsersManagement.tsx` | Add Bulk Import + Export buttons, export function |
+| `src/pages/admin/BulkImport.tsx` | Add emergency contact fields to parsing and payload |
+| `supabase/functions/bulk-import/index.ts` | Add emergency contact fields to PlayerRow and profile update |
+| `.lovable/plan.md` | Update status |
+
