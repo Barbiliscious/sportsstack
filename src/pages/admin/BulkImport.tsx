@@ -46,6 +46,9 @@ interface ParsedRow {
   division: string;
   phone: string;
   suburb: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  emergency_contact_relationship: string;
   errors: string[];
   team_id: string | null;
 }
