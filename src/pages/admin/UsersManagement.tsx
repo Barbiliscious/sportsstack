@@ -271,10 +271,20 @@ const UsersManagement = () => {
           <h1 className="text-3xl font-bold tracking-tight">Users</h1>
           <p className="text-muted-foreground">Manage user profiles, roles, and memberships</p>
         </div>
-        <Button onClick={() => navigate("/admin/add-player")}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Add Player
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate("/admin/bulk-import")}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Bulk Import
+          </Button>
+          <Button variant="outline" onClick={handleExport} disabled={filteredUsers.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+          <Button onClick={() => navigate("/admin/add-player")}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Player
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
