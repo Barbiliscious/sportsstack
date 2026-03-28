@@ -46,15 +46,18 @@ const NAV_SETS: Record<AppMode, { path: string; label: string; icon: typeof Layo
     { path: "/admin/associations", label: "Associations", icon: Globe },
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
+    { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
   ],
   association: [
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
+    { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
   ],
   club: [
     { path: "/admin/teams", label: "Teams", icon: Shield },
+    { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
     { path: "/admin", label: "Club Settings", icon: Settings },
   ],
