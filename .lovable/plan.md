@@ -16,7 +16,8 @@ The app supports 5 operational modes (Super Admin, Association, Club, Team, Play
 | 4 | Bulk player import | ✅ Done | Admin page `/admin/bulk-import` with XLSX upload, preview table, validation. Edge function `bulk-import` with mock email generation and scope validation. Emergency contact fields supported. |
 | 4b | Player export | ✅ Done | Export button on Users Management page, exports filtered players to XLSX with registration #, all profile fields, club/team/division, emergency contacts. |
 | 5 | Bulk fixture import | 🔲 Todo | Resolve club+division to team_id, insert into `games`. Reuses `ScopedTeamSelector`. |
-| 6 | Fixture export | 🔲 Todo | Export scoped fixtures to CSV/PDF |
+| 6 | Fixture export | ✅ Done | XLSX export on Games page (team) + admin FixturesManagement page (bulk). Round number badge + season filter dropdown added. |
+| 6b | Seasons table | ✅ Done | `seasons` table with association_id, start/end dates, is_active flag. `season_id` + `round_number` columns added to `games`. |
 | 7 | Player exceptions / compliance | 🔲 Todo | `player_exceptions` table, age checks, missing data flags |
 
 ### Phase 3: Competition Features
