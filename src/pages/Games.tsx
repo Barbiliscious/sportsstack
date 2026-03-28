@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,16 +6,26 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Calendar,
   MapPin,
   Clock,
   ChevronRight,
   CalendarDays,
   List,
+  Download,
 } from "lucide-react";
 import { cn, getTeamDisplayName } from "@/lib/utils";
 import { useTeamContext } from "@/contexts/TeamContext";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import * as XLSX from "xlsx";
 
 interface GameRow {
   id: string;
@@ -28,13 +38,45 @@ interface GameRow {
   home_score: number | null;
   away_score: number | null;
   notes: string | null;
+  round_number: number | null;
+  season_id: string | null;
+}
+
+interface Season {
+  id: string;
+  name: string;
+  association_id: string;
+  is_active: boolean;
 }
 
 const Games = () => {
-  const { selectedTeamId, selectedClub, selectedTeam } = useTeamContext();
+  const { selectedTeamId, selectedClub, selectedTeam, selectedAssociationId } = useTeamContext();
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [games, setGames] = useState<GameRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string>("all");
+
+  // Fetch seasons for the association
+  useEffect(() => {
+    const fetchSeasons = async () => {
+      if (!selectedAssociationId) {
+        setSeasons([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("seasons")
+        .select("id, name, association_id, is_active")
+        .eq("association_id", selectedAssociationId)
+        .order("start_date", { ascending: false });
+      const s = (data as Season[]) || [];
+      setSeasons(s);
+      // Default to active season if exists
+      const active = s.find((x) => x.is_active);
+      setSelectedSeasonId(active ? active.id : "all");
+    };
+    fetchSeasons();
+  }, [selectedAssociationId]);
 
   useEffect(() => {
     const fetchGames = async () => {
@@ -44,16 +86,22 @@ const Games = () => {
         return;
       }
       setLoading(true);
-      const { data } = await supabase
+      let query = supabase
         .from("games")
         .select("*")
         .eq("team_id", selectedTeamId)
         .order("game_date", { ascending: true });
-      setGames(data || []);
+
+      if (selectedSeasonId && selectedSeasonId !== "all") {
+        query = query.eq("season_id", selectedSeasonId);
+      }
+
+      const { data } = await query;
+      setGames((data as GameRow[]) || []);
       setLoading(false);
     };
     fetchGames();
-  }, [selectedTeamId]);
+  }, [selectedTeamId, selectedSeasonId]);
 
   const now = new Date();
   const upcomingGames = games.filter((g) => new Date(g.game_date) >= now);
@@ -61,6 +109,36 @@ const Games = () => {
 
   const teamName = selectedTeam ? getTeamDisplayName(selectedTeam) : "Team";
   const clubName = selectedClub?.name || "";
+
+  const handleExport = () => {
+    if (games.length === 0) return;
+
+    const rows = games.map((g) => {
+      const d = new Date(g.game_date);
+      return {
+        Round: g.round_number ?? "",
+        Date: d.toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }),
+        Day: d.toLocaleDateString("en-AU", { weekday: "short" }),
+        Time: d.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }),
+        "Home/Away": g.is_home ? "Home" : "Away",
+        Opponent: g.opponent_name,
+        Location: g.location || "",
+        Status: g.status,
+        "Home Score": g.home_score ?? "",
+        "Away Score": g.away_score ?? "",
+        Notes: g.notes || "",
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
+    const safeName = teamName.replace(/[^a-zA-Z0-9]/g, "_");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `fixtures-${safeName}-${dateStr}.xlsx`);
+
+    toast({ title: "Fixtures exported", description: `${games.length} games exported to XLSX.` });
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -74,7 +152,24 @@ const Games = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Season filter */}
+          {seasons.length > 0 && (
+            <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Season" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Seasons</SelectItem>
+                {seasons.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           <Button
             variant={viewMode === "list" ? "secondary" : "ghost"}
             size="icon-sm"
@@ -88,6 +183,15 @@ const Games = () => {
             onClick={() => setViewMode("calendar")}
           >
             <CalendarDays className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={handleExport}
+            disabled={games.length === 0}
+            title="Export fixtures to XLSX"
+          >
+            <Download className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -172,6 +276,11 @@ const GameCard = ({ game, index, isPast, teamName }: GameCardProps) => {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
+                  {game.round_number !== null && game.round_number !== undefined && (
+                    <Badge variant="secondary" className="text-xs">
+                      Rd {game.round_number}
+                    </Badge>
+                  )}
                   <Badge variant={game.is_home ? "default" : "outline"} className="text-xs">
                     {game.is_home ? "Home" : "Away"}
                   </Badge>
