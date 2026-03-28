@@ -320,7 +320,7 @@ const BulkImport = () => {
           <CardTitle className="text-lg">Upload Spreadsheet</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <Label
               htmlFor="file-upload"
               className="flex items-center gap-2 px-4 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
@@ -336,6 +336,29 @@ const BulkImport = () => {
               onChange={handleFileUpload}
               disabled={!selectedAssociationId}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const headers = [
+                  "first_name", "last_name", "email", "phone", "suburb",
+                  "date_of_birth", "gender", "hockey_vic_number",
+                  "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
+                  "association", "club", "competition", "team_name",
+                  "is_primary_team", "jersey_number", "position", "role", "notes",
+                ];
+                const ws = XLSX.utils.aoa_to_sheet([headers]);
+                // Set column widths
+                ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Players");
+                XLSX.writeFile(wb, "player_import_template.xlsx");
+              }}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Download Template
+            </Button>
             {fileName && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <FileSpreadsheet className="h-4 w-4" />
