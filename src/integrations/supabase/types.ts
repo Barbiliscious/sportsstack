@@ -140,6 +140,8 @@ export type Database = {
           location: string | null
           notes: string | null
           opponent_name: string
+          round_number: number | null
+          season_id: string | null
           status: string
           team_id: string
           updated_at: string
@@ -154,6 +156,8 @@ export type Database = {
           location?: string | null
           notes?: string | null
           opponent_name: string
+          round_number?: number | null
+          season_id?: string | null
           status?: string
           team_id: string
           updated_at?: string
@@ -168,11 +172,20 @@ export type Database = {
           location?: string | null
           notes?: string | null
           opponent_name?: string
+          round_number?: number | null
+          season_id?: string | null
           status?: string
           team_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "games_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "seasons"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "games_team_id_fkey"
             columns: ["team_id"]
@@ -375,6 +388,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      seasons: {
+        Row: {
+          association_id: string
+          created_at: string | null
+          end_date: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          start_date: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          association_id: string
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          start_date?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          association_id?: string
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          start_date?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seasons_association_id_fkey"
+            columns: ["association_id"]
+            isOneToOne: false
+            referencedRelation: "associations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_memberships: {
         Row: {
