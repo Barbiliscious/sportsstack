@@ -384,6 +384,7 @@ const UsersManagement = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Player Status</TableHead>
                   <TableHead>Team(s)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Roles</TableHead>
