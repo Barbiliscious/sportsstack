@@ -1,44 +1,42 @@
 
-## Grampians Hockey — Implementation Plan
 
-### Phase 1: 5-Mode App System ✅ COMPLETE
+# Week 1 Implementation — Security & Quick Wins
 
-The app supports 5 operational modes (Super Admin, Association, Club, Team, Player) with role-based navigation, mode switching, and localStorage persistence. See `AppModeContext.tsx`.
+## Steps to Build (in order)
 
-### Phase 2: Data & Import (Current)
+### Step 1: Fix `create-player` invite emails (CRITICAL)
+- In `supabase/functions/create-player/index.ts`, replace `auth.admin.createUser` with `auth.admin.inviteUserByEmail`
+- Remove temp password generation
+- Player receives email link to set their own password
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | Sunraysia Hockey Association setup | ✅ Done | SHA + Koowinda, Wanderers, Riverside, Waratahs (6 teams each) |
-| 2 | Team nicknames column | ✅ Done | `nickname` column added to `teams` table |
-| 3 | Admin Add Player form | ✅ Done | Scoped entry form with gender, HV number, team assignment. Edge function `create-player`. New profile columns. `ScopedTeamSelector` reusable component. 4-level cascading selector (Association > Club > Division > Team). Dual-frame Primary + Additional Teams with multi-membership support. |
-| 3b | useAdminScope flickering fix | ✅ Done | Memoized scoped ID arrays to prevent infinite re-render loops |
-| 4 | Bulk player import | ✅ Done | Admin page `/admin/bulk-import` with XLSX upload, preview table, validation. Edge function `bulk-import` with mock email generation and scope validation. Emergency contact fields supported. |
-| 4b | Player export | ✅ Done | Export button on Users Management page, exports filtered players to XLSX with registration #, all profile fields, club/team/division, emergency contacts. |
-| 5 | Bulk fixture import | 🔲 Todo | Resolve club+division to team_id, insert into `games`. Reuses `ScopedTeamSelector`. |
-| 6 | Fixture export | ✅ Done | XLSX export on Games page (team) + admin FixturesManagement page (bulk). Round number badge + season filter dropdown added. |
-| 6b | Seasons table | ✅ Done | `seasons` table with association_id, start/end dates, is_active flag. `season_id` + `round_number` columns added to `games`. |
-| 7 | Player exceptions / compliance | 🔲 Todo | `player_exceptions` table, age checks, missing data flags |
+### Step 2: Fix `bulk-import` invite emails (CRITICAL)
+- Same change in `supabase/functions/bulk-import/index.ts`
+- Remove mock email generation — block rows with no email instead
+- Return skipped rows in the error response
 
-### Phase 3: Competition Features
+### Step 3: Dark mode toggle
+- Wire `next-themes` ThemeProvider in `main.tsx`
+- Add toggle button to sidebar/header
+- Ensure Tailwind dark class strategy is set
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 8 | Seasons + standings | 🔲 Todo | `seasons` table, `season_id` on games, ladder page |
-| 9 | Player statistics | 🔲 Todo | `player_game_stats` table, goals/cards/BOG, leaderboard |
+### Step 4: Club branding in player UI
+- Fetch club's `primary_colour`, `logo_url` etc. via team context
+- Apply to dashboard header, sidebar team name, and team pages
 
-### Phase 4: Polish & UX
+### Step 5: Notification preferences
+- DB migration: `notification_preferences` table (user_id, channel, category, enabled)
+- Add preferences section to Profile page with toggles
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 10 | Club branding in player UI | 🔲 Todo | Wire `primary_colour`, `logo_url` etc. into dashboards |
-| 11 | Dark mode toggle | 🔲 Todo | `next-themes` already installed, needs wiring |
-| 12 | Audit log | 🔲 Todo | `audit_log` table for admin action tracking |
+### Step 6: Player status field
+- DB migration: add `status` (Active/Inactive/Suspended) and `admin_notes` to profiles
+- Update Users Management table to show/edit status
 
-### Database Structure
+### Step 7: `is_player` flag on team_memberships
+- DB migration: add `is_player` boolean (default false)
+- When true, coach/manager appears in lineup player selection list
 
-- **Associations**: Hockey Ballarat, Wimmera Hockey Association, Sunraysia Hockey Association
-- **Clubs per association**: 4-6 clubs each, with 6 standard teams per club
-- **Team divisions**: Division 1 Open, Division 1 Women, Under 11, Under 12, Under 14, Under 16
-- **Roles**: SUPER_ADMIN, ASSOCIATION_ADMIN, CLUB_ADMIN, TEAM_MANAGER, COACH, PLAYER
-- **Profile columns**: first_name, last_name, phone, suburb, date_of_birth, gender, hockey_vic_number, emergency contact fields, avatar_url
+## Technical Notes
+- Steps 1-2 are the highest priority — current flow creates accounts with random passwords players never see
+- `inviteUserByEmail` sends a magic link; the user sets their password on first visit
+- Steps 3-7 are independent of each other and can be built in any order after 1-2
+
