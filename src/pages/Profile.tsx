@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Lock, Camera, Wrench } from "lucide-react";
+import { Save, Lock, Camera, Wrench, Settings } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationPreferencesSection } from "@/components/profile/NotificationPreferencesSection";
 import { PersonalDetailsSection } from "@/components/profile/PersonalDetailsSection";
 import { TeamMembershipSection } from "@/components/profile/TeamMembershipSection";
