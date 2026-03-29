@@ -158,23 +158,21 @@ const Profile = () => {
       setProfile(profileData);
       setAvatarUrl(profileData.avatar_url || undefined);
       
-      const fullName = [profileData.first_name, profileData.last_name]
-        .filter(Boolean)
-        .join(" ");
-      
-      setFormData({
-        name: fullName,
+      const newFormData = {
+        firstName: profileData.first_name || "",
+        lastName: profileData.last_name || "",
         phone: profileData.phone || "",
         suburb: profileData.suburb || "",
         dateOfBirth: profileData.date_of_birth || "",
         gender: profileData.gender || "",
-        hockeyVicNumber: profileData.hockey_vic_number || "",
         emergencyContact: {
           name: profileData.emergency_contact_name || "",
           phone: profileData.emergency_contact_phone || "",
           relationship: profileData.emergency_contact_relationship || "",
         },
-      });
+      };
+      setFormData(newFormData);
+      setSavedFormData(newFormData);
     }
 
     // Fetch team memberships with team, club, association details
