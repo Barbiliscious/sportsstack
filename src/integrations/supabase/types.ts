@@ -233,6 +233,36 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          category: string
+          channel: string
+          created_at: string
+          enabled: boolean
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          channel?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          channel?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
@@ -340,6 +370,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          admin_notes: string | null
           avatar_url: string | null
           created_at: string
           date_of_birth: string | null
@@ -352,10 +383,12 @@ export type Database = {
           id: string
           last_name: string | null
           phone: string | null
+          status: string
           suburb: string | null
           updated_at: string
         }
         Insert: {
+          admin_notes?: string | null
           avatar_url?: string | null
           created_at?: string
           date_of_birth?: string | null
@@ -368,10 +401,12 @@ export type Database = {
           id: string
           last_name?: string | null
           phone?: string | null
+          status?: string
           suburb?: string | null
           updated_at?: string
         }
         Update: {
+          admin_notes?: string | null
           avatar_url?: string | null
           created_at?: string
           date_of_birth?: string | null
@@ -384,6 +419,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           phone?: string | null
+          status?: string
           suburb?: string | null
           updated_at?: string
         }
@@ -435,6 +471,7 @@ export type Database = {
           created_at: string
           id: string
           invited_by: string | null
+          is_player: boolean
           jersey_number: number | null
           membership_type: Database["public"]["Enums"]["membership_type"]
           position: string | null
@@ -447,6 +484,7 @@ export type Database = {
           created_at?: string
           id?: string
           invited_by?: string | null
+          is_player?: boolean
           jersey_number?: number | null
           membership_type?: Database["public"]["Enums"]["membership_type"]
           position?: string | null
@@ -459,6 +497,7 @@ export type Database = {
           created_at?: string
           id?: string
           invited_by?: string | null
+          is_player?: boolean
           jersey_number?: number | null
           membership_type?: Database["public"]["Enums"]["membership_type"]
           position?: string | null
