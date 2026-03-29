@@ -138,8 +138,15 @@ export const TeamMembershipSection = ({
 
       {/* Extra Teams */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-lg">Additional Teams</CardTitle>
+          {onRequestAdditionalTeam && (
+            <Button variant="outline" size="sm" onClick={onRequestAdditionalTeam}>
+              <Plus className="h-4 w-4 mr-2" />
+              Request Team
+            </Button>
+          )}
+        </CardHeader>
         </CardHeader>
         <CardContent>
           {extraTeams.length > 0 ? (
