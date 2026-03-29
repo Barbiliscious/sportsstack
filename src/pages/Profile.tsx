@@ -288,20 +288,15 @@ const Profile = () => {
   const handleSave = async () => {
     if (!user) return;
 
-    const nameParts = formData.name.trim().split(" ");
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || "";
-
     const { error } = await supabase
       .from("profiles")
       .update({
-        first_name: firstName,
-        last_name: lastName,
+        first_name: formData.firstName || null,
+        last_name: formData.lastName || null,
         phone: formData.phone || null,
         suburb: formData.suburb || null,
         date_of_birth: formData.dateOfBirth || null,
         gender: formData.gender || null,
-        hockey_vic_number: formData.hockeyVicNumber || null,
         emergency_contact_name: formData.emergencyContact.name || null,
         emergency_contact_phone: formData.emergencyContact.phone || null,
         emergency_contact_relationship: formData.emergencyContact.relationship || null,
