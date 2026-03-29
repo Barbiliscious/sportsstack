@@ -37,11 +37,14 @@ interface TeamContextType {
   selectedAssociationId: string;
   selectedClubId: string;
   selectedTeamId: string;
+  selectedDivision: string;
   setSelectedAssociationId: (id: string) => void;
   setSelectedClubId: (id: string) => void;
   setSelectedTeamId: (id: string) => void;
+  setSelectedDivision: (d: string) => void;
   filteredClubs: Club[];
   filteredTeams: Team[];
+  filteredDivisions: string[];
   selectedAssociation: Association | undefined;
   selectedClub: Club | undefined;
   selectedTeam: Team | undefined;
