@@ -720,15 +720,18 @@ const Profile = () => {
         onCancelRequest={handleCancelChangeRequest}
         onSetPrimaryTeam={() => setSetPrimaryDialogOpen(true)}
         hasApprovedTeams={approvedMemberships.length > 0}
+        onRequestAdditionalTeam={() => setRequestAdditionalDialogOpen(true)}
       />
 
       {/* Personal Details with Edit */}
       <PersonalDetailsSection
-        profile={profileForSection}
+        email={user?.email || ""}
         isEditing={isEditing}
         formData={formData}
         onFormChange={handleFormChange}
-        onEditToggle={() => (isEditing ? handleSave() : setIsEditing(true))}
+        onSave={handleSave}
+        onCancel={handleCancel}
+        onEdit={handleStartEdit}
       />
 
       {/* Security */}
