@@ -33,6 +33,7 @@ interface TeamMembershipSectionProps {
   onRequestChange: () => void;
   onCancelRequest?: () => void;
   onSetPrimaryTeam?: () => void;
+  onRequestAdditionalTeam?: () => void;
   hasApprovedTeams: boolean;
 }
 
