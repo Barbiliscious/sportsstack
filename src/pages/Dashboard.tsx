@@ -203,7 +203,7 @@ const Dashboard = () => {
           </Card>
 
           {/* Upcoming Games */}
-          <Card className="bg-primary text-primary-foreground">
+          <Card style={brandStyle} className={!brandStyle ? "bg-primary text-primary-foreground" : ""}>
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold text-primary-foreground">
                 Upcoming games
