@@ -124,18 +124,20 @@ const Profile = () => {
   const [requestAdditionalDialogOpen, setRequestAdditionalDialogOpen] = useState(false);
   
   const [formData, setFormData] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     phone: "",
     suburb: "",
     dateOfBirth: "",
     gender: "",
-    hockeyVicNumber: "",
     emergencyContact: {
       name: "",
       phone: "",
       relationship: "",
     },
   });
+
+  const [savedFormData, setSavedFormData] = useState(formData);
 
   // Fetch profile, memberships, and pending change requests
   const fetchData = async () => {
