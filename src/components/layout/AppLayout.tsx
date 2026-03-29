@@ -178,8 +178,6 @@ const AppLayout = () => {
   // Show selectors based on mode
   const showAssociationSelector = mode === "super_admin";
   const showClubSelector = mode === "super_admin" || mode === "association";
-  const showDivisionSelector = true; // show for all modes when divisions available
-  const showTeamSelector = true;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
