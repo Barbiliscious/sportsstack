@@ -142,6 +142,7 @@ const BulkImport = () => {
         const errors: string[] = [];
         if (!r.first_name.trim()) errors.push("First name required");
         if (!r.last_name.trim()) errors.push("Last name required");
+        if (!r.email.trim()) errors.push("Email required");
 
         let team_id: string | null = null;
         if (r.club_name && r.division) {
@@ -419,7 +420,7 @@ const BulkImport = () => {
                       <TableCell className="font-mono text-xs">{r.row_number}</TableCell>
                       <TableCell>{r.first_name}</TableCell>
                       <TableCell>{r.last_name}</TableCell>
-                      <TableCell className="text-xs">{r.email || <span className="text-muted-foreground italic">auto</span>}</TableCell>
+                      <TableCell className="text-xs">{r.email || <span className="text-destructive italic">missing</span>}</TableCell>
                       <TableCell>{r.gender}</TableCell>
                       <TableCell className="text-xs">{r.date_of_birth}</TableCell>
                       <TableCell className="text-xs">{r.hockey_vic_number}</TableCell>

@@ -384,6 +384,7 @@ const UsersManagement = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Player Status</TableHead>
                   <TableHead>Team(s)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Roles</TableHead>
@@ -397,6 +398,20 @@ const UsersManagement = () => {
                       {user.first_name || user.last_name
                         ? `${user.first_name || ""} ${user.last_name || ""}`.trim()
                         : "(No name)"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="secondary"
+                        className={
+                          (user as any).status === "Suspended"
+                            ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                            : (user as any).status === "Inactive"
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                        }
+                      >
+                        {(user as any).status || "Active"}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">

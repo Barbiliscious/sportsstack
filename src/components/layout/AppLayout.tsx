@@ -34,6 +34,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTeamContext } from "@/contexts/TeamContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -370,7 +371,8 @@ const AppLayout = () => {
           </div>
 
           {/* Right: Notifications & User */}
-          <div className="flex items-center gap-3">
+           <div className="flex items-center gap-1">
+            <ThemeToggle />
             <Popover>
               <PopoverTrigger asChild>
                 <Button

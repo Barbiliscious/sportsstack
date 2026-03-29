@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Save, Lock, Camera, Wrench } from "lucide-react";
+import { NotificationPreferencesSection } from "@/components/profile/NotificationPreferencesSection";
 import { PersonalDetailsSection } from "@/components/profile/PersonalDetailsSection";
 import { TeamMembershipSection } from "@/components/profile/TeamMembershipSection";
 import { PendingInvitesSection } from "@/components/profile/PendingInvitesSection";
@@ -781,6 +782,9 @@ const Profile = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Notification Preferences */}
+      <NotificationPreferencesSection />
 
       {/* Photo Cropper Dialog */}
       <ProfilePhotoCropper

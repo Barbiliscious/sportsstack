@@ -152,13 +152,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create auth user
-    const tempPassword = crypto.randomUUID().slice(0, 16) + "Aa1!";
-    const { data: newUser, error: createError } = await serviceClient.auth.admin.createUser({
-      email: payload.email,
-      password: tempPassword,
-      email_confirm: true,
-    });
+    // Invite user by email — player sets their own password via the link
+    const { data: newUser, error: createError } = await serviceClient.auth.admin.inviteUserByEmail(
+      payload.email,
+      { data: { first_name: payload.first_name, last_name: payload.last_name } }
+    );
 
     if (createError) {
       return new Response(

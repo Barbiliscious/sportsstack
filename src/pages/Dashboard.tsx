@@ -150,15 +150,25 @@ const Dashboard = () => {
   const monthYearLabel = calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
   const teamName = selectedTeam ? getTeamDisplayName(selectedTeam) : "Team";
 
+  // Club branding
+  const clubPrimary = selectedClub?.primary_colour || undefined;
+  const clubSecondary = selectedClub?.secondary_colour || undefined;
+  const clubBannerUrl = (selectedClub as any)?.banner_url || undefined;
+  const clubLogoUrl = selectedClub?.logo_url || undefined;
+
+  const brandStyle = clubPrimary
+    ? { backgroundColor: clubPrimary, color: clubSecondary || "#fff" }
+    : undefined;
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Welcome Banner */}
-      <Card className="bg-primary text-primary-foreground">
+      <Card style={brandStyle} className={!brandStyle ? "bg-primary text-primary-foreground" : ""}>
         <CardContent className="py-4 px-6">
           <p className="text-lg font-medium">
             Welcome back{profileName ? `, ${profileName}` : ""}!
           </p>
-          <p className="text-sm text-primary-foreground/70 mt-1">
+          <p className="text-sm opacity-70 mt-1">
             {selectedClub?.name || "Select a club"} • {teamName}
           </p>
         </CardContent>
@@ -168,11 +178,24 @@ const Dashboard = () => {
         {/* Left Column */}
         <div className="space-y-4">
           {/* Club Banner */}
-          <Card className="bg-primary text-primary-foreground h-[260px]">
-            <CardContent className="flex items-center justify-center h-full py-8">
-              <div className="text-center">
+          <Card
+            className={`h-[260px] overflow-hidden ${!clubBannerUrl && !brandStyle ? "bg-primary text-primary-foreground" : ""}`}
+            style={!clubBannerUrl ? brandStyle : undefined}
+          >
+            <CardContent className="flex items-center justify-center h-full py-8 relative">
+              {clubBannerUrl ? (
+                <img
+                  src={clubBannerUrl}
+                  alt={`${selectedClub?.name} banner`}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : null}
+              <div className={`text-center relative z-10 ${clubBannerUrl ? "bg-background/80 backdrop-blur-sm rounded-xl px-6 py-4" : ""}`}>
+                {clubLogoUrl && (
+                  <img src={clubLogoUrl} alt={selectedClub?.name} className="h-16 w-16 mx-auto mb-3 object-contain" />
+                )}
                 <h2 className="text-xl font-bold mb-2">{selectedClub?.name || "Select a club"}</h2>
-                <p className="text-primary-foreground/80">
+                <p className="opacity-80">
                   {selectedClub?.home_ground || "Club banner"}
                 </p>
               </div>
@@ -180,7 +203,7 @@ const Dashboard = () => {
           </Card>
 
           {/* Upcoming Games */}
-          <Card className="bg-primary text-primary-foreground">
+          <Card style={brandStyle} className={!brandStyle ? "bg-primary text-primary-foreground" : ""}>
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold text-primary-foreground">
                 Upcoming games
@@ -265,7 +288,7 @@ const Dashboard = () => {
 
         {/* Right Column - Calendar */}
         <div className="space-y-4">
-          <Card className="bg-primary text-primary-foreground h-[260px]">
+          <Card style={brandStyle} className={`h-[260px] ${!brandStyle ? "bg-primary text-primary-foreground" : ""}`}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <Button
