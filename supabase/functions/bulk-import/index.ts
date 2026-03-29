@@ -150,19 +150,18 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Generate mock email if none provided
-        const email =
-          player.email ||
-          `${player.first_name.toLowerCase().replace(/\s+/g, "")}.${player.last_name.toLowerCase().replace(/\s+/g, "")}@grampianshockey.mock`;
+        // Email is required — skip rows without one
+        if (!player.email) {
+          errors.push({ row: player.row_number, error: "Email is required (skipped)" });
+          continue;
+        }
 
-        // Create auth user
-        const tempPassword = crypto.randomUUID().slice(0, 16) + "Aa1!";
+        // Invite user by email — player sets their own password via the link
         const { data: newUser, error: createError } =
-          await serviceClient.auth.admin.createUser({
-            email,
-            password: tempPassword,
-            email_confirm: true,
-          });
+          await serviceClient.auth.admin.inviteUserByEmail(
+            player.email,
+            { data: { first_name: player.first_name, last_name: player.last_name } }
+          );
 
         if (createError) {
           errors.push({ row: player.row_number, error: createError.message });
