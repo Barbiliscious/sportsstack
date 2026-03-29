@@ -343,7 +343,7 @@ const AppLayout = () => {
             )}
 
             {/* Club Selector */}
-            {showClubSelector && filteredClubs.length > 0 && (
+            {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
               <Select value={selectedClubId || undefined} onValueChange={setSelectedClubId}>
                 <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
