@@ -824,6 +824,14 @@ const Profile = () => {
         onConfirm={handleSetPrimaryTeam}
         isChangingPrimary={!!primaryMembership}
       />
+
+      {/* Request Additional Team Dialog */}
+      <RequestAdditionalTeamDialog
+        open={requestAdditionalDialogOpen}
+        onOpenChange={setRequestAdditionalDialogOpen}
+        existingTeamIds={memberships.map((m) => m.team_id)}
+        onSuccess={fetchData}
+      />
     </div>
   );
 };
