@@ -310,12 +310,23 @@ const Profile = () => {
         variant: "destructive",
       });
     } else {
+      setSavedFormData(formData);
       setIsEditing(false);
       toast({
         title: "Profile Updated",
         description: "Your profile has been saved successfully.",
       });
     }
+  };
+
+  const handleCancel = () => {
+    setFormData(savedFormData);
+    setIsEditing(false);
+  };
+
+  const handleStartEdit = () => {
+    setSavedFormData(formData);
+    setIsEditing(true);
   };
 
   const handleFormChange = (data: Partial<typeof formData>) => {
