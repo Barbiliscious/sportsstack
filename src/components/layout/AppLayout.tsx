@@ -178,8 +178,6 @@ const AppLayout = () => {
   // Show selectors based on mode
   const showAssociationSelector = mode === "super_admin";
   const showClubSelector = mode === "super_admin" || mode === "association";
-  const showDivisionSelector = true; // show for all modes when divisions available
-  const showTeamSelector = true;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -343,7 +341,7 @@ const AppLayout = () => {
             )}
 
             {/* Club Selector */}
-            {showClubSelector && filteredClubs.length > 0 && (
+            {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
               <Select value={selectedClubId || undefined} onValueChange={setSelectedClubId}>
                 <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
@@ -359,7 +357,7 @@ const AppLayout = () => {
             )}
 
             {/* Division Selector */}
-            {showDivisionSelector && filteredDivisions.length > 0 && (
+            {selectedClubId && filteredDivisions.length > 0 && (
               <Select value={selectedDivision || undefined} onValueChange={setSelectedDivision}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Division" />
@@ -375,7 +373,7 @@ const AppLayout = () => {
             )}
 
             {/* Team Selector */}
-            {showTeamSelector && filteredTeams.length > 0 && (
+            {selectedClubId && (filteredDivisions.length === 0 || selectedDivision) && filteredTeams.length > 0 && (
               <Select value={selectedTeamId || undefined} onValueChange={setSelectedTeamId}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Team" />

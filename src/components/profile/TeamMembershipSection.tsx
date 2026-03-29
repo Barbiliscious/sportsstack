@@ -33,6 +33,7 @@ interface TeamMembershipSectionProps {
   onRequestChange: () => void;
   onCancelRequest?: () => void;
   onSetPrimaryTeam?: () => void;
+  onRequestAdditionalTeam?: () => void;
   hasApprovedTeams: boolean;
 }
 
@@ -43,6 +44,7 @@ export const TeamMembershipSection = ({
   onRequestChange,
   onCancelRequest,
   onSetPrimaryTeam,
+  onRequestAdditionalTeam,
   hasApprovedTeams,
 }: TeamMembershipSectionProps) => {
   return (
@@ -136,8 +138,14 @@ export const TeamMembershipSection = ({
 
       {/* Extra Teams */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-lg">Additional Teams</CardTitle>
+          {onRequestAdditionalTeam && (
+            <Button variant="outline" size="sm" onClick={onRequestAdditionalTeam}>
+              <Plus className="h-4 w-4 mr-2" />
+              Request Team
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {extraTeams.length > 0 ? (

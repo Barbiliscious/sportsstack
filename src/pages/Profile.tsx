@@ -18,6 +18,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationPreferencesSection } from "@/components/profile/NotificationPreferencesSection";
 import { PersonalDetailsSection } from "@/components/profile/PersonalDetailsSection";
 import { TeamMembershipSection } from "@/components/profile/TeamMembershipSection";
+import { RequestAdditionalTeamDialog } from "@/components/profile/RequestAdditionalTeamDialog";
 import { PendingInvitesSection } from "@/components/profile/PendingInvitesSection";
 import { ProfilePhotoCropper } from "@/components/profile/ProfilePhotoCropper";
 import { StatsDetailDialog } from "@/components/profile/StatsDetailDialog";
@@ -120,20 +121,23 @@ const Profile = () => {
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [statsDialogType, setStatsDialogType] = useState<"games" | "goals">("games");
   const [setPrimaryDialogOpen, setSetPrimaryDialogOpen] = useState(false);
+  const [requestAdditionalDialogOpen, setRequestAdditionalDialogOpen] = useState(false);
   
   const [formData, setFormData] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     phone: "",
     suburb: "",
     dateOfBirth: "",
     gender: "",
-    hockeyVicNumber: "",
     emergencyContact: {
       name: "",
       phone: "",
       relationship: "",
     },
   });
+
+  const [savedFormData, setSavedFormData] = useState(formData);
 
   // Fetch profile, memberships, and pending change requests
   const fetchData = async () => {
@@ -154,23 +158,21 @@ const Profile = () => {
       setProfile(profileData);
       setAvatarUrl(profileData.avatar_url || undefined);
       
-      const fullName = [profileData.first_name, profileData.last_name]
-        .filter(Boolean)
-        .join(" ");
-      
-      setFormData({
-        name: fullName,
+      const newFormData = {
+        firstName: profileData.first_name || "",
+        lastName: profileData.last_name || "",
         phone: profileData.phone || "",
         suburb: profileData.suburb || "",
         dateOfBirth: profileData.date_of_birth || "",
         gender: profileData.gender || "",
-        hockeyVicNumber: profileData.hockey_vic_number || "",
         emergencyContact: {
           name: profileData.emergency_contact_name || "",
           phone: profileData.emergency_contact_phone || "",
           relationship: profileData.emergency_contact_relationship || "",
         },
-      });
+      };
+      setFormData(newFormData);
+      setSavedFormData(newFormData);
     }
 
     // Fetch team memberships with team, club, association details
@@ -286,20 +288,15 @@ const Profile = () => {
   const handleSave = async () => {
     if (!user) return;
 
-    const nameParts = formData.name.trim().split(" ");
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || "";
-
     const { error } = await supabase
       .from("profiles")
       .update({
-        first_name: firstName,
-        last_name: lastName,
+        first_name: formData.firstName || null,
+        last_name: formData.lastName || null,
         phone: formData.phone || null,
         suburb: formData.suburb || null,
         date_of_birth: formData.dateOfBirth || null,
         gender: formData.gender || null,
-        hockey_vic_number: formData.hockeyVicNumber || null,
         emergency_contact_name: formData.emergencyContact.name || null,
         emergency_contact_phone: formData.emergencyContact.phone || null,
         emergency_contact_relationship: formData.emergencyContact.relationship || null,
@@ -313,12 +310,23 @@ const Profile = () => {
         variant: "destructive",
       });
     } else {
+      setSavedFormData(formData);
       setIsEditing(false);
       toast({
         title: "Profile Updated",
         description: "Your profile has been saved successfully.",
       });
     }
+  };
+
+  const handleCancel = () => {
+    setFormData(savedFormData);
+    setIsEditing(false);
+  };
+
+  const handleStartEdit = () => {
+    setSavedFormData(formData);
+    setIsEditing(true);
   };
 
   const handleFormChange = (data: Partial<typeof formData>) => {
@@ -597,8 +605,8 @@ const Profile = () => {
     status: "PENDING" as const,
   }));
 
-  const displayName = formData.name || user?.email || "User";
-  const initials = displayName.charAt(0).toUpperCase();
+  const displayName = [formData.firstName, formData.lastName].filter(Boolean).join(" ") || user?.email || "User";
+  const initials = (formData.firstName?.charAt(0) || user?.email?.charAt(0) || "U").toUpperCase();
 
   if (loading) {
     return (
@@ -618,21 +626,7 @@ const Profile = () => {
     );
   }
 
-  // Map profile data for PersonalDetailsSection
-  const profileForSection = {
-    id: user?.id || "",
-    name: formData.name,
-    email: user?.email || "",
-    phone: formData.phone,
-    suburb: formData.suburb,
-    dateOfBirth: formData.dateOfBirth,
-    emergencyContact: formData.emergencyContact,
-    associationId: primaryTeam?.associationId || "",
-    primaryTeam,
-    extraTeams: [],
-    pendingInvites: [],
-    pendingPrimaryChangeRequest: null,
-  };
+  
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto animate-fade-in pb-8">
@@ -726,15 +720,18 @@ const Profile = () => {
         onCancelRequest={handleCancelChangeRequest}
         onSetPrimaryTeam={() => setSetPrimaryDialogOpen(true)}
         hasApprovedTeams={approvedMemberships.length > 0}
+        onRequestAdditionalTeam={() => setRequestAdditionalDialogOpen(true)}
       />
 
       {/* Personal Details with Edit */}
       <PersonalDetailsSection
-        profile={profileForSection}
+        email={user?.email || ""}
         isEditing={isEditing}
         formData={formData}
         onFormChange={handleFormChange}
-        onEditToggle={() => (isEditing ? handleSave() : setIsEditing(true))}
+        onSave={handleSave}
+        onCancel={handleCancel}
+        onEdit={handleStartEdit}
       />
 
       {/* Security */}
@@ -826,6 +823,14 @@ const Profile = () => {
         currentPrimaryTeamId={primaryMembership?.team_id}
         onConfirm={handleSetPrimaryTeam}
         isChangingPrimary={!!primaryMembership}
+      />
+
+      {/* Request Additional Team Dialog */}
+      <RequestAdditionalTeamDialog
+        open={requestAdditionalDialogOpen}
+        onOpenChange={setRequestAdditionalDialogOpen}
+        existingTeamIds={memberships.map((m) => m.team_id)}
+        onSuccess={fetchData}
       />
     </div>
   );
