@@ -400,6 +400,20 @@ const UsersManagement = () => {
                         : "(No name)"}
                     </TableCell>
                     <TableCell>
+                      <Badge
+                        variant="secondary"
+                        className={
+                          (user as any).status === "Suspended"
+                            ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                            : (user as any).status === "Inactive"
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                        }
+                      >
+                        {(user as any).status || "Active"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {user.memberships.length === 0 ? (
                           <span className="text-muted-foreground text-sm">Unassigned</span>
