@@ -37,11 +37,14 @@ interface TeamContextType {
   selectedAssociationId: string;
   selectedClubId: string;
   selectedTeamId: string;
+  selectedDivision: string;
   setSelectedAssociationId: (id: string) => void;
   setSelectedClubId: (id: string) => void;
   setSelectedTeamId: (id: string) => void;
+  setSelectedDivision: (d: string) => void;
   filteredClubs: Club[];
   filteredTeams: Team[];
+  filteredDivisions: string[];
   selectedAssociation: Association | undefined;
   selectedClub: Club | undefined;
   selectedTeam: Team | undefined;
@@ -58,6 +61,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
   const [selectedClubId, setSelectedClubId] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedDivision, setSelectedDivision] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -86,16 +90,38 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const filteredClubs = clubs.filter(c => c.association_id === selectedAssociationId);
-  const filteredTeams = teams.filter(t => t.club_id === selectedClubId);
+  
+  // Derive unique divisions from teams of selected club
+  const filteredDivisions = Array.from(
+    new Set(
+      teams
+        .filter(t => t.club_id === selectedClubId && t.division)
+        .map(t => t.division as string)
+    )
+  ).sort();
+
+  // Filter teams by club AND division (if selected)
+  const filteredTeams = teams.filter(t => {
+    if (t.club_id !== selectedClubId) return false;
+    if (selectedDivision && t.division !== selectedDivision) return false;
+    return true;
+  });
 
   const handleAssociationChange = (id: string) => {
     setSelectedAssociationId(id);
     setSelectedClubId("");
     setSelectedTeamId("");
+    setSelectedDivision("");
   };
 
   const handleClubChange = (id: string) => {
     setSelectedClubId(id);
+    setSelectedTeamId("");
+    setSelectedDivision("");
+  };
+
+  const handleDivisionChange = (d: string) => {
+    setSelectedDivision(d);
     setSelectedTeamId("");
   };
 
@@ -112,11 +138,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         selectedAssociationId,
         selectedClubId,
         selectedTeamId,
+        selectedDivision,
         setSelectedAssociationId: handleAssociationChange,
         setSelectedClubId: handleClubChange,
         setSelectedTeamId,
+        setSelectedDivision: handleDivisionChange,
         filteredClubs,
         filteredTeams,
+        filteredDivisions,
         selectedAssociation,
         selectedClub,
         selectedTeam,

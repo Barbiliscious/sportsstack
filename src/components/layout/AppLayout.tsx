@@ -23,7 +23,6 @@ import {
   Menu,
   X,
   Bell,
-  User,
   ClipboardList,
   Users,
   UserCog,
@@ -34,7 +33,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTeamContext } from "@/contexts/TeamContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -95,15 +93,6 @@ const MOBILE_NAV: Record<AppMode, { path: string; label: string; icon: typeof La
   ],
 };
 
-// Profile icon destination per mode
-const PROFILE_DEST: Record<AppMode, string> = {
-  super_admin: "/admin/associations",
-  association: "/admin/associations",
-  club: "/admin",
-  team: "/profile",
-  player: "/profile",
-};
-
 interface Notification {
   id: string;
   type: string;
@@ -123,11 +112,14 @@ const AppLayout = () => {
     selectedAssociationId,
     selectedClubId,
     selectedTeamId,
+    selectedDivision,
     setSelectedAssociationId,
     setSelectedClubId,
     setSelectedTeamId,
+    setSelectedDivision,
     filteredClubs,
     filteredTeams,
+    filteredDivisions,
     selectedAssociation,
   } = useTeamContext();
 
@@ -135,6 +127,8 @@ const AppLayout = () => {
   const [isAssociationPopoverOpen, setIsAssociationPopoverOpen] = useState(false);
   const [isModeSwitcherOpen, setIsModeSwitcherOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const [userInitials, setUserInitials] = useState("U");
 
   // Fetch notifications from DB
   useEffect(() => {
@@ -151,6 +145,27 @@ const AppLayout = () => {
     fetchNotifications();
   }, [user]);
 
+  // Fetch user avatar
+  useEffect(() => {
+    if (!user) return;
+    const fetchProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("avatar_url, first_name, last_name")
+        .eq("id", user.id)
+        .single();
+      if (data) {
+        setUserAvatarUrl(data.avatar_url);
+        const initials = [data.first_name, data.last_name]
+          .filter(Boolean)
+          .map((n) => n!.charAt(0).toUpperCase())
+          .join("");
+        setUserInitials(initials || user.email?.charAt(0).toUpperCase() || "U");
+      }
+    };
+    fetchProfile();
+  }, [user]);
+
   const handleAssociationChange = (associationId: string) => {
     setSelectedAssociationId(associationId);
     setIsAssociationPopoverOpen(false);
@@ -158,15 +173,13 @@ const AppLayout = () => {
 
   const navItems = NAV_SETS[mode];
   const mobileNavItems = MOBILE_NAV[mode];
-  const profileDest = PROFILE_DEST[mode];
   const unreadCount = notifications.filter((n) => !n.read).length;
-
-  const isAdminMode = mode === "super_admin" || mode === "association" || mode === "club";
 
   // Show selectors based on mode
   const showAssociationSelector = mode === "super_admin";
   const showClubSelector = mode === "super_admin" || mode === "association";
-  const showTeamSelector = mode === "super_admin" || mode === "association" || mode === "club" || mode === "team" || mode === "player";
+  const showDivisionSelector = true; // show for all modes when divisions available
+  const showTeamSelector = true;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -176,7 +189,6 @@ const AppLayout = () => {
   const handleModeSwitch = (newMode: AppMode) => {
     setMode(newMode);
     setIsModeSwitcherOpen(false);
-    // Navigate to mode's landing page
     const landing = newMode === "super_admin" || newMode === "association" || newMode === "club" ? "/admin" : "/dashboard";
     navigate(landing);
   };
@@ -260,7 +272,7 @@ const AppLayout = () => {
       {/* Top Header Bar */}
       <header className="sticky top-0 z-50 bg-primary border-b border-primary/20">
         <div className="flex h-14 items-center justify-between px-4">
-          {/* Left: Association Logo & Selectors */}
+          {/* Left: Hamburger → Association Logo → Club → Division → Team */}
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -330,10 +342,10 @@ const AppLayout = () => {
               </div>
             )}
 
-            {/* Club Selector - only for modes that need it */}
+            {/* Club Selector */}
             {showClubSelector && filteredClubs.length > 0 && (
               <Select value={selectedClubId || undefined} onValueChange={setSelectedClubId}>
-                <SelectTrigger className="w-[180px] lg:w-[200px] bg-accent text-accent-foreground border-0 font-medium">
+                <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
@@ -346,10 +358,26 @@ const AppLayout = () => {
               </Select>
             )}
 
+            {/* Division Selector */}
+            {showDivisionSelector && filteredDivisions.length > 0 && (
+              <Select value={selectedDivision || undefined} onValueChange={setSelectedDivision}>
+                <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
+                  <SelectValue placeholder="Division" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border">
+                  {filteredDivisions.map((div) => (
+                    <SelectItem key={div} value={div}>
+                      {div}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
             {/* Team Selector */}
             {showTeamSelector && filteredTeams.length > 0 && (
               <Select value={selectedTeamId || undefined} onValueChange={setSelectedTeamId}>
-                <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
+                <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Team" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
@@ -361,18 +389,10 @@ const AppLayout = () => {
                 </SelectContent>
               </Select>
             )}
-
-            {/* Mode badge for admin modes */}
-            {isAdminMode && (
-              <Badge className="bg-accent text-accent-foreground text-xs hidden sm:flex ml-2">
-                {modeLabel}
-              </Badge>
-            )}
           </div>
 
-          {/* Right: Notifications & User */}
-           <div className="flex items-center gap-1">
-            <ThemeToggle />
+          {/* Right: Notifications & User Avatar */}
+          <div className="flex items-center gap-1">
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -426,11 +446,14 @@ const AppLayout = () => {
                 </div>
               </PopoverContent>
             </Popover>
-            
-            <Link to={profileDest}>
-              <div className="w-9 h-9 rounded-full bg-accent flex items-center justify-center hover:ring-2 hover:ring-primary-foreground/50 transition-all cursor-pointer">
-                <User className="h-5 w-5 text-accent-foreground" />
-              </div>
+
+            <Link to="/profile">
+              <Avatar className="w-9 h-9 border-2 border-primary-foreground/20 hover:border-primary-foreground/50 transition-colors cursor-pointer">
+                <AvatarImage src={userAvatarUrl || undefined} alt="Profile" />
+                <AvatarFallback className="bg-accent text-accent-foreground text-sm font-semibold">
+                  {userInitials}
+                </AvatarFallback>
+              </Avatar>
             </Link>
           </div>
         </div>
