@@ -288,7 +288,7 @@ const Dashboard = () => {
 
         {/* Right Column - Calendar */}
         <div className="space-y-4">
-          <Card className="bg-primary text-primary-foreground h-[260px]">
+          <Card style={brandStyle} className={`h-[260px] ${!brandStyle ? "bg-primary text-primary-foreground" : ""}`}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <Button

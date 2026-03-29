@@ -142,8 +142,7 @@ const BulkImport = () => {
         const errors: string[] = [];
         if (!r.first_name.trim()) errors.push("First name required");
         if (!r.last_name.trim()) errors.push("Last name required");
-
-        let team_id: string | null = null;
+        if (!r.email.trim()) errors.push("Email required");
         if (r.club_name && r.division) {
           const key = `${r.club_name.toLowerCase().trim()}|${r.division.toLowerCase().trim()}`;
           const found = teamLookup.get(key);
