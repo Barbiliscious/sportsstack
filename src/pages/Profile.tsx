@@ -18,6 +18,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationPreferencesSection } from "@/components/profile/NotificationPreferencesSection";
 import { PersonalDetailsSection } from "@/components/profile/PersonalDetailsSection";
 import { TeamMembershipSection } from "@/components/profile/TeamMembershipSection";
+import { RequestAdditionalTeamDialog } from "@/components/profile/RequestAdditionalTeamDialog";
 import { PendingInvitesSection } from "@/components/profile/PendingInvitesSection";
 import { ProfilePhotoCropper } from "@/components/profile/ProfilePhotoCropper";
 import { StatsDetailDialog } from "@/components/profile/StatsDetailDialog";
