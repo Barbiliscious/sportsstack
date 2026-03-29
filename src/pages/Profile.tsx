@@ -626,21 +626,7 @@ const Profile = () => {
     );
   }
 
-  // Map profile data for PersonalDetailsSection
-  const profileForSection = {
-    id: user?.id || "",
-    name: formData.name,
-    email: user?.email || "",
-    phone: formData.phone,
-    suburb: formData.suburb,
-    dateOfBirth: formData.dateOfBirth,
-    emergencyContact: formData.emergencyContact,
-    associationId: primaryTeam?.associationId || "",
-    primaryTeam,
-    extraTeams: [],
-    pendingInvites: [],
-    pendingPrimaryChangeRequest: null,
-  };
+  
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto animate-fade-in pb-8">
