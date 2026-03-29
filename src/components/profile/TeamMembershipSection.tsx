@@ -147,7 +147,6 @@ export const TeamMembershipSection = ({
             </Button>
           )}
         </CardHeader>
-        </CardHeader>
         <CardContent>
           {extraTeams.length > 0 ? (
             <div className="space-y-3">
