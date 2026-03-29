@@ -605,8 +605,8 @@ const Profile = () => {
     status: "PENDING" as const,
   }));
 
-  const displayName = formData.name || user?.email || "User";
-  const initials = displayName.charAt(0).toUpperCase();
+  const displayName = [formData.firstName, formData.lastName].filter(Boolean).join(" ") || user?.email || "User";
+  const initials = (formData.firstName?.charAt(0) || user?.email?.charAt(0) || "U").toUpperCase();
 
   if (loading) {
     return (
