@@ -61,6 +61,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
   const [selectedClubId, setSelectedClubId] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedDivision, setSelectedDivision] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
