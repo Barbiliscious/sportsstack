@@ -124,8 +124,8 @@ const AddPlayer = () => {
     }
 
     toast({
-      title: "Player Created",
-      description: `${form.first_name} ${form.last_name} has been added successfully.`,
+      title: "Player Invited",
+      description: `An invitation email has been sent to ${form.email}.`,
     });
     navigate("/admin/users");
   };

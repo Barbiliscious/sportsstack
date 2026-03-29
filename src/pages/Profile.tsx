@@ -783,6 +783,9 @@ const Profile = () => {
         </CardContent>
       </Card>
 
+      {/* Notification Preferences */}
+      <NotificationPreferencesSection />
+
       {/* Photo Cropper Dialog */}
       <ProfilePhotoCropper
         open={cropperOpen}
