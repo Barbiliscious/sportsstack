@@ -359,7 +359,7 @@ const AppLayout = () => {
             )}
 
             {/* Division Selector */}
-            {showDivisionSelector && filteredDivisions.length > 0 && (
+            {selectedClubId && filteredDivisions.length > 0 && (
               <Select value={selectedDivision || undefined} onValueChange={setSelectedDivision}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Division" />
