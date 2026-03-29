@@ -375,7 +375,7 @@ const AppLayout = () => {
             )}
 
             {/* Team Selector */}
-            {showTeamSelector && filteredTeams.length > 0 && (
+            {selectedClubId && (filteredDivisions.length === 0 || selectedDivision) && filteredTeams.length > 0 && (
               <Select value={selectedTeamId || undefined} onValueChange={setSelectedTeamId}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Team" />

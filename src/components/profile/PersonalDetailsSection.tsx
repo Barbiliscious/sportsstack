@@ -10,96 +10,121 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Mail, Phone, MapPin, Calendar, AlertCircle, Save, User, Hash } from "lucide-react";
-import type { PlayerProfile, EmergencyContact } from "@/lib/mockData";
+import { Mail, Phone, MapPin, Calendar, AlertCircle, Save, User, X } from "lucide-react";
 
 interface PersonalDetailsSectionProps {
-  profile: PlayerProfile;
+  email: string;
   isEditing: boolean;
   formData: {
-    name: string;
+    firstName: string;
+    lastName: string;
     phone: string;
     suburb: string;
     dateOfBirth: string;
     gender: string;
-    hockeyVicNumber: string;
-    emergencyContact: EmergencyContact;
+    emergencyContact: {
+      name: string;
+      phone: string;
+      relationship: string;
+    };
   };
   onFormChange: (data: Partial<PersonalDetailsSectionProps["formData"]>) => void;
-  onEditToggle: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onEdit: () => void;
 }
 
 export const PersonalDetailsSection = ({
-  profile,
+  email,
   isEditing,
   formData,
   onFormChange,
-  onEditToggle,
+  onSave,
+  onCancel,
+  onEdit,
 }: PersonalDetailsSectionProps) => {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg">Personal Details</CardTitle>
-        <Button
-          variant={isEditing ? "default" : "outline"}
-          size="sm"
-          onClick={onEditToggle}
-        >
+        <div className="flex items-center gap-2">
           {isEditing ? (
             <>
-              <Save className="h-4 w-4 mr-2" />
-              Save
+              <Button variant="outline" size="sm" onClick={onCancel}>
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+              <Button size="sm" onClick={onSave}>
+                <Save className="h-4 w-4 mr-2" />
+                Save
+              </Button>
             </>
           ) : (
-            "Edit"
-          )}
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Name */}
-        <div className="space-y-2">
-          <Label htmlFor="name">Full Name</Label>
-          {isEditing ? (
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => onFormChange({ name: e.target.value })}
-            />
-          ) : (
-            <p className="text-foreground py-2">{formData.name}</p>
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              Edit
+            </Button>
           )}
         </div>
-
-        {/* Email (read-only) */}
-        <div className="space-y-2">
-          <Label>Email</Label>
-          <div className="flex items-center gap-2 py-2">
-            <Mail className="h-4 w-4 text-muted-foreground" />
-            <p className="text-foreground">{profile.email}</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Row 1: First Name | Last Name */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="firstName">First Name</Label>
+            {isEditing ? (
+              <Input
+                id="firstName"
+                value={formData.firstName}
+                onChange={(e) => onFormChange({ firstName: e.target.value })}
+              />
+            ) : (
+              <p className="text-foreground py-2">{formData.firstName || "Not set"}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Last Name</Label>
+            {isEditing ? (
+              <Input
+                id="lastName"
+                value={formData.lastName}
+                onChange={(e) => onFormChange({ lastName: e.target.value })}
+              />
+            ) : (
+              <p className="text-foreground py-2">{formData.lastName || "Not set"}</p>
+            )}
           </div>
         </div>
 
-        {/* Phone */}
-        <div className="space-y-2">
-          <Label htmlFor="phone">Phone Number</Label>
-          {isEditing ? (
-            <Input
-              id="phone"
-              value={formData.phone}
-              onChange={(e) => onFormChange({ phone: e.target.value })}
-              placeholder="0400 000 000"
-            />
-          ) : (
+        {/* Row 2: Email (read-only) | Phone */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Email</Label>
             <div className="flex items-center gap-2 py-2">
-              <Phone className="h-4 w-4 text-muted-foreground" />
-              <p className="text-foreground">{formData.phone || "Not set"}</p>
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <p className="text-foreground">{email}</p>
             </div>
-          )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone Number</Label>
+            {isEditing ? (
+              <Input
+                id="phone"
+                value={formData.phone}
+                onChange={(e) => onFormChange({ phone: e.target.value })}
+                placeholder="0400 000 000"
+              />
+            ) : (
+              <div className="flex items-center gap-2 py-2">
+                <Phone className="h-4 w-4 text-muted-foreground" />
+                <p className="text-foreground">{formData.phone || "Not set"}</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Suburb/Address */}
+        {/* Row 3: Address (full width) */}
         <div className="space-y-2">
-          <Label htmlFor="suburb">Suburb/Address</Label>
+          <Label htmlFor="suburb">Address</Label>
           {isEditing ? (
             <Textarea
               id="suburb"
@@ -116,73 +141,55 @@ export const PersonalDetailsSection = ({
           )}
         </div>
 
-        {/* Date of Birth */}
-        <div className="space-y-2">
-          <Label htmlFor="dob">Date of Birth</Label>
-          {isEditing ? (
-            <Input
-              id="dob"
-              type="date"
-              value={formData.dateOfBirth}
-              onChange={(e) => onFormChange({ dateOfBirth: e.target.value })}
-            />
-          ) : (
-            <div className="flex items-center gap-2 py-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <p className="text-foreground">
-                {formData.dateOfBirth
-                  ? new Date(formData.dateOfBirth).toLocaleDateString("en-AU", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })
-                  : "Not set"}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Gender */}
-        <div className="space-y-2">
-          <Label>Gender</Label>
-          {isEditing ? (
-            <Select
-              value={formData.gender}
-              onValueChange={(v) => onFormChange({ gender: v })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Male">Male</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
-            <div className="flex items-center gap-2 py-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <p className="text-foreground">{formData.gender || "Not set"}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Hockey Victoria Number */}
-        <div className="space-y-2">
-          <Label htmlFor="hv-number">Hockey Victoria Number</Label>
-          {isEditing ? (
-            <Input
-              id="hv-number"
-              value={formData.hockeyVicNumber}
-              onChange={(e) => onFormChange({ hockeyVicNumber: e.target.value })}
-              placeholder="e.g. HV12345"
-            />
-          ) : (
-            <div className="flex items-center gap-2 py-2">
-              <Hash className="h-4 w-4 text-muted-foreground" />
-              <p className="text-foreground">{formData.hockeyVicNumber || "Not set"}</p>
-            </div>
-          )}
+        {/* Row 4: Date of Birth | Gender */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="dob">Date of Birth</Label>
+            {isEditing ? (
+              <Input
+                id="dob"
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={(e) => onFormChange({ dateOfBirth: e.target.value })}
+              />
+            ) : (
+              <div className="flex items-center gap-2 py-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <p className="text-foreground">
+                  {formData.dateOfBirth
+                    ? new Date(formData.dateOfBirth).toLocaleDateString("en-AU", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
+                    : "Not set"}
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label>Gender</Label>
+            {isEditing ? (
+              <Select
+                value={formData.gender}
+                onValueChange={(v) => onFormChange({ gender: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="flex items-center gap-2 py-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <p className="text-foreground">{formData.gender || "Not set"}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Emergency Contact */}
