@@ -1,42 +1,41 @@
 
 
-# Week 1 Implementation — Security & Quick Wins
+# Header Restructure & Profile Settings Migration
 
-## Steps to Build (in order)
+## What Changes
 
-### Step 1: Fix `create-player` invite emails (CRITICAL)
-- In `supabase/functions/create-player/index.ts`, replace `auth.admin.createUser` with `auth.admin.inviteUserByEmail`
-- Remove temp password generation
-- Player receives email link to set their own password
+### 1. Header bar — left side reorder
+Current: Hamburger → Association logo → Club selector → Team selector → Mode badge
+New: **Hamburger → Association logo → Club selector → Division selector (new) → Team selector**
 
-### Step 2: Fix `bulk-import` invite emails (CRITICAL)
-- Same change in `supabase/functions/bulk-import/index.ts`
-- Remove mock email generation — block rows with no email instead
-- Return skipped rows in the error response
+Remove the mode badge from the header (mode switcher stays in sidebar).
 
-### Step 3: Dark mode toggle
-- Wire `next-themes` ThemeProvider in `main.tsx`
-- Add toggle button to sidebar/header
-- Ensure Tailwind dark class strategy is set
+### 2. Add Division selector between Club and Team
+Derive unique `division` values from `teams` rows filtered by `club_id`. Add `selectedDivision`, `setSelectedDivision`, and `filteredDivisions` to `TeamContext`. Filter `filteredTeams` by both `club_id` AND `division` when a division is selected.
 
-### Step 4: Club branding in player UI
-- Fetch club's `primary_colour`, `logo_url` etc. via team context
-- Apply to dashboard header, sidebar team name, and team pages
+### 3. Header bar — right side cleanup
+Current: ThemeToggle → Bell → generic User icon circle
+New: **Bell → User avatar** (with actual `avatar_url` from profiles, linking always to `/profile`)
 
-### Step 5: Notification preferences
-- DB migration: `notification_preferences` table (user_id, channel, category, enabled)
-- Add preferences section to Profile page with toggles
+Remove `ThemeToggle` from header. Change `PROFILE_DEST` for all modes to `/profile`.
 
-### Step 6: Player status field
-- DB migration: add `status` (Active/Inactive/Suspended) and `admin_notes` to profiles
-- Update Users Management table to show/edit status
+### 4. Fetch user avatar for header
+Add a small `useEffect` in `AppLayout` (or extend `AuthContext`) to fetch the current user's `profiles.avatar_url` and display it in the header avatar. Show initials as fallback.
 
-### Step 7: `is_player` flag on team_memberships
-- DB migration: add `is_player` boolean (default false)
-- When true, coach/manager appears in lineup player selection list
+### 5. Move Theme Toggle to Profile page
+Add a "Preferences" or "Settings" card on `/profile` containing:
+- Dark/Light mode toggle (restyled as a labeled row, not icon button)
+- Notification preferences (already there)
 
-## Technical Notes
-- Steps 1-2 are the highest priority — current flow creates accounts with random passwords players never see
-- `inviteUserByEmail` sends a magic link; the user sets their password on first visit
-- Steps 3-7 are independent of each other and can be built in any order after 1-2
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/contexts/TeamContext.tsx` | Add `selectedDivision`, `setSelectedDivision`, `filteredDivisions` derived from teams of selected club |
+| `src/components/layout/AppLayout.tsx` | Remove ThemeToggle import, remove mode badge, add division Select, fetch avatar_url, update PROFILE_DEST to always `/profile`, show real avatar |
+| `src/pages/Profile.tsx` | Add "Preferences" section with inline theme toggle |
+| `src/components/ThemeToggle.tsx` | Restyle as a labeled switch row for use in profile settings |
+
+### Division Filtering Logic
+No new DB table needed (that's Week 2). Derive unique `division` strings from `teams` where `club_id` matches selected club. When a division is selected, `filteredTeams` filters by both `club_id` and `division`. Changing club resets division. Changing association resets club and division.
 
