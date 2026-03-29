@@ -121,6 +121,7 @@ const Profile = () => {
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [statsDialogType, setStatsDialogType] = useState<"games" | "goals">("games");
   const [setPrimaryDialogOpen, setSetPrimaryDialogOpen] = useState(false);
+  const [requestAdditionalDialogOpen, setRequestAdditionalDialogOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     name: "",
