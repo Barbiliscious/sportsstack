@@ -90,16 +90,38 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const filteredClubs = clubs.filter(c => c.association_id === selectedAssociationId);
-  const filteredTeams = teams.filter(t => t.club_id === selectedClubId);
+  
+  // Derive unique divisions from teams of selected club
+  const filteredDivisions = Array.from(
+    new Set(
+      teams
+        .filter(t => t.club_id === selectedClubId && t.division)
+        .map(t => t.division as string)
+    )
+  ).sort();
+
+  // Filter teams by club AND division (if selected)
+  const filteredTeams = teams.filter(t => {
+    if (t.club_id !== selectedClubId) return false;
+    if (selectedDivision && t.division !== selectedDivision) return false;
+    return true;
+  });
 
   const handleAssociationChange = (id: string) => {
     setSelectedAssociationId(id);
     setSelectedClubId("");
     setSelectedTeamId("");
+    setSelectedDivision("");
   };
 
   const handleClubChange = (id: string) => {
     setSelectedClubId(id);
+    setSelectedTeamId("");
+    setSelectedDivision("");
+  };
+
+  const handleDivisionChange = (d: string) => {
+    setSelectedDivision(d);
     setSelectedTeamId("");
   };
 
