@@ -57,6 +57,7 @@ interface ParsedRow {
 
 interface ImportResult {
   created: number;
+  added: number;
   errors: Array<{ row: number; error: string }>;
 }
 
