@@ -261,6 +261,7 @@ const BulkImport = () => {
           emergency_contact_phone: r.emergency_contact_phone || null,
           emergency_contact_relationship: r.emergency_contact_relationship || null,
           team_id: r.team_id,
+          is_primary_team: r.is_primary_team,
           row_number: r.row_number,
         })),
       },
