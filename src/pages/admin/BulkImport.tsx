@@ -475,7 +475,10 @@ const BulkImport = () => {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm">
-              <span className="font-semibold text-green-600">{importResult.created}</span> player(s) created successfully.
+              <span className="font-semibold text-green-600">{importResult.created}</span> new player(s) created.
+              {importResult.added > 0 && (
+                <> <span className="font-semibold text-blue-600">{importResult.added}</span> added to additional teams.</>
+              )}
             </p>
             {importResult.errors.length > 0 && (
               <div className="space-y-1">
