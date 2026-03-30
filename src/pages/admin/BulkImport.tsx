@@ -280,7 +280,7 @@ const BulkImport = () => {
     setImportResult(data as ImportResult);
     toast({
       title: "Import Complete",
-      description: `${data.created} player(s) created. ${data.errors?.length || 0} failed.`,
+      description: `${data.created} new player(s) created. ${data.added || 0} added to additional teams. ${data.errors?.length || 0} failed.`,
     });
   };
 
