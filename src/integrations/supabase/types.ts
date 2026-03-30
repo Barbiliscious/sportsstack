@@ -656,6 +656,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_profile_in_admin_scope: {
+        Args: { _admin_user_id: string; _profile_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:
