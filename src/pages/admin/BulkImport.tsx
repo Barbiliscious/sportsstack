@@ -180,22 +180,36 @@ const BulkImport = () => {
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
-        const parsed = json.map((row, i) => ({
-          row_number: i + 2, // header is row 1
-          first_name: String(row["first_name"] || row["First Name"] || row["FirstName"] || "").trim(),
-          last_name: String(row["last_name"] || row["Last Name"] || row["LastName"] || "").trim(),
-          email: String(row["email"] || row["Email"] || "").trim(),
-          gender: String(row["gender"] || row["Gender"] || "").trim(),
-          date_of_birth: String(row["date_of_birth"] || row["DOB"] || row["Date of Birth"] || "").trim(),
-          hockey_vic_number: String(row["hockey_vic_number"] || row["HV Number"] || row["HV_Number"] || "").trim(),
-          club_name: String(row["club_name"] || row["Club"] || row["Club Name"] || "").trim(),
-          division: String(row["division"] || row["Division"] || row["Comp"] || "").trim(),
-          phone: String(row["phone"] || row["Phone"] || "").trim(),
-          suburb: String(row["suburb"] || row["Suburb"] || row["Address"] || "").trim(),
-          emergency_contact_name: String(row["emergency_contact_name"] || row["Emergency Contact Name"] || row["EC Name"] || "").trim(),
-          emergency_contact_phone: String(row["emergency_contact_phone"] || row["Emergency Contact Phone"] || row["EC Phone"] || "").trim(),
-          emergency_contact_relationship: String(row["emergency_contact_relationship"] || row["Emergency Contact Relationship"] || row["EC Relationship"] || "").trim(),
-        }));
+        const parsed = json.map((row, i) => {
+          // Convert DD/MM/YYYY to YYYY-MM-DD
+          let dob = String(row["date_of_birth"] || row["DOB"] || row["Date of Birth"] || "").trim();
+          if (dob && dob.includes("/")) {
+            const parts = dob.split("/");
+            if (parts.length === 3) {
+              dob = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+          }
+
+          const isPrimaryRaw = String(row["is_primary_team"] || row["Is Primary Team"] || "").trim().toLowerCase();
+
+          return {
+            row_number: i + 2,
+            first_name: String(row["first_name"] || row["First Name"] || row["FirstName"] || "").trim(),
+            last_name: String(row["last_name"] || row["Last Name"] || row["LastName"] || "").trim(),
+            email: String(row["email"] || row["Email"] || "").trim(),
+            gender: String(row["gender"] || row["Gender"] || "").trim(),
+            date_of_birth: dob,
+            hockey_vic_number: String(row["hockey_vic_number"] || row["HV Number"] || row["HV_Number"] || "").trim(),
+            club_name: String(row["club_name"] || row["Club"] || row["Club Name"] || row["club"] || "").trim(),
+            division: String(row["division"] || row["Division"] || row["Comp"] || row["competition"] || "").trim(),
+            phone: String(row["phone"] || row["Phone"] || "").trim(),
+            suburb: String(row["suburb"] || row["Suburb"] || row["Address"] || "").trim(),
+            emergency_contact_name: String(row["emergency_contact_name"] || row["Emergency Contact Name"] || row["EC Name"] || "").trim(),
+            emergency_contact_phone: String(row["emergency_contact_phone"] || row["Emergency Contact Phone"] || row["EC Phone"] || "").trim(),
+            emergency_contact_relationship: String(row["emergency_contact_relationship"] || row["Emergency Contact Relationship"] || row["EC Relationship"] || "").trim(),
+            is_primary_team: isPrimaryRaw === "yes" || isPrimaryRaw === "true" || isPrimaryRaw === "1",
+          };
+        });
 
         setRows(validateRows(parsed));
       } catch {
