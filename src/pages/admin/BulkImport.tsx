@@ -50,6 +50,7 @@ interface ParsedRow {
   emergency_contact_name: string;
   emergency_contact_phone: string;
   emergency_contact_relationship: string;
+  is_primary_team: boolean;
   errors: string[];
   team_id: string | null;
 }
