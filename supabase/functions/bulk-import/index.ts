@@ -20,6 +20,7 @@ interface PlayerRow {
   emergency_contact_relationship: string | null;
   team_id: string;
   row_number: number;
+  is_primary_team: boolean;
 }
 
 interface Payload {
@@ -35,7 +36,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verify caller has admin role with scope over this association
+    // Verify caller has admin role
     const { data: callerRoles } = await serviceClient
       .from("user_roles")
       .select("role, association_id, club_id, team_id")
@@ -90,16 +90,11 @@ Deno.serve(async (req) => {
     const isSuperAdmin = callerRoles.some((r) => r.role === "SUPER_ADMIN");
 
     if (!isSuperAdmin) {
-      // Check caller has scope over the association
       const hasAssocScope = callerRoles.some(
-        (r) =>
-          ADMIN_ROLES.includes(r.role) &&
-          r.role === "ASSOCIATION_ADMIN" &&
-          r.association_id === payload.association_id
+        (r) => r.role === "ASSOCIATION_ADMIN" && r.association_id === payload.association_id
       );
 
       if (!hasAssocScope) {
-        // Check if caller has club/team scope within this association
         const { data: assocClubs } = await serviceClient
           .from("clubs")
           .select("id")
@@ -136,6 +131,7 @@ Deno.serve(async (req) => {
 
     // Process each player
     const created: number[] = [];
+    const added: number[] = [];
     const errors: Array<{ row: number; error: string }> = [];
 
     for (const player of payload.players) {
@@ -144,62 +140,191 @@ Deno.serve(async (req) => {
           errors.push({ row: player.row_number, error: "Missing first or last name" });
           continue;
         }
-
         if (!player.team_id) {
           errors.push({ row: player.row_number, error: "No team resolved" });
           continue;
         }
-
-        // Email is required — skip rows without one
         if (!player.email) {
           errors.push({ row: player.row_number, error: "Email is required (skipped)" });
           continue;
         }
 
-        // Invite user by email — player sets their own password via the link
-        const { data: newUser, error: createError } =
-          await serviceClient.auth.admin.inviteUserByEmail(
-            player.email,
-            { data: { first_name: player.first_name, last_name: player.last_name } }
-          );
+        const isPrimary = player.is_primary_team !== false;
+        const membershipType = isPrimary ? "PRIMARY" : "PERMANENT";
 
-        if (createError) {
-          errors.push({ row: player.row_number, error: createError.message });
-          continue;
+        // Check if user already exists
+        const { data: existingUsers } = await serviceClient.auth.admin.listUsers({
+          page: 1,
+          perPage: 1,
+        });
+
+        // Search by email using a targeted approach
+        const { data: profileByEmail } = await serviceClient
+          .from("profiles")
+          .select("id")
+          .limit(1);
+
+        // Use getUserByEmail-style lookup via listUsers filter
+        let existingUserId: string | null = null;
+        const { data: userList } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
+        if (userList?.users) {
+          const match = userList.users.find(
+            (u) => u.email?.toLowerCase() === player.email!.toLowerCase()
+          );
+          if (match) existingUserId = match.id;
         }
 
-        const userId = newUser.user.id;
+        if (existingUserId) {
+          // User exists — handle based on is_primary_team flag
+          if (isPrimary) {
+            // Check if they already have a PRIMARY membership for a team in this association
+            const { data: existingMemberships } = await serviceClient
+              .from("team_memberships")
+              .select("id, team_id, membership_type")
+              .eq("user_id", existingUserId)
+              .eq("membership_type", "PRIMARY")
+              .eq("status", "APPROVED");
 
-        // Update profile
-        await serviceClient.from("profiles").update({
-          first_name: player.first_name,
-          last_name: player.last_name,
-          gender: player.gender || null,
-          date_of_birth: player.date_of_birth || null,
-          phone: player.phone || null,
-          suburb: player.suburb || null,
-          hockey_vic_number: player.hockey_vic_number || null,
-          emergency_contact_name: player.emergency_contact_name || null,
-          emergency_contact_phone: player.emergency_contact_phone || null,
-          emergency_contact_relationship: player.emergency_contact_relationship || null,
-        }).eq("id", userId);
+            if (existingMemberships && existingMemberships.length > 0) {
+              // Check if any of these primary memberships are in the same association
+              const primaryTeamIds = existingMemberships.map((m) => m.team_id);
+              const { data: primaryTeams } = await serviceClient
+                .from("teams")
+                .select("id, club_id")
+                .in("id", primaryTeamIds);
 
-        // Insert team membership (PRIMARY)
-        await serviceClient.from("team_memberships").insert({
-          user_id: userId,
-          team_id: player.team_id,
-          membership_type: "PRIMARY",
-          status: "APPROVED",
-        });
+              if (primaryTeams) {
+                const clubIds = primaryTeams.map((t) => t.club_id);
+                const { data: primaryClubs } = await serviceClient
+                  .from("clubs")
+                  .select("id, association_id")
+                  .in("id", clubIds);
 
-        // Insert player role
-        await serviceClient.from("user_roles").insert({
-          user_id: userId,
-          role: "PLAYER",
-          team_id: player.team_id,
-        });
+                const hasPrimaryInAssoc = primaryClubs?.some(
+                  (c) => c.association_id === payload.association_id
+                );
 
-        created.push(player.row_number);
+                if (hasPrimaryInAssoc) {
+                  errors.push({
+                    row: player.row_number,
+                    error: "Already has a primary team in this association",
+                  });
+                  continue;
+                }
+              }
+            }
+
+            // Add PRIMARY membership + update profile
+            await serviceClient.from("profiles").update({
+              first_name: player.first_name,
+              last_name: player.last_name,
+              gender: player.gender || null,
+              date_of_birth: player.date_of_birth || null,
+              phone: player.phone || null,
+              suburb: player.suburb || null,
+              hockey_vic_number: player.hockey_vic_number || null,
+              emergency_contact_name: player.emergency_contact_name || null,
+              emergency_contact_phone: player.emergency_contact_phone || null,
+              emergency_contact_relationship: player.emergency_contact_relationship || null,
+            }).eq("id", existingUserId);
+
+            await serviceClient.from("team_memberships").insert({
+              user_id: existingUserId,
+              team_id: player.team_id,
+              membership_type: "PRIMARY",
+              status: "APPROVED",
+            });
+
+            // Ensure PLAYER role exists
+            const { data: existingRole } = await serviceClient
+              .from("user_roles")
+              .select("id")
+              .eq("user_id", existingUserId)
+              .eq("role", "PLAYER")
+              .eq("team_id", player.team_id)
+              .maybeSingle();
+
+            if (!existingRole) {
+              await serviceClient.from("user_roles").insert({
+                user_id: existingUserId,
+                role: "PLAYER",
+                team_id: player.team_id,
+              });
+            }
+
+            added.push(player.row_number);
+          } else {
+            // Not primary — just add as additional team, don't update profile
+            await serviceClient.from("team_memberships").insert({
+              user_id: existingUserId,
+              team_id: player.team_id,
+              membership_type: "PERMANENT",
+              status: "APPROVED",
+            });
+
+            const { data: existingRole } = await serviceClient
+              .from("user_roles")
+              .select("id")
+              .eq("user_id", existingUserId)
+              .eq("role", "PLAYER")
+              .eq("team_id", player.team_id)
+              .maybeSingle();
+
+            if (!existingRole) {
+              await serviceClient.from("user_roles").insert({
+                user_id: existingUserId,
+                role: "PLAYER",
+                team_id: player.team_id,
+              });
+            }
+
+            added.push(player.row_number);
+          }
+        } else {
+          // New user — invite by email
+          const { data: newUser, error: createError } =
+            await serviceClient.auth.admin.inviteUserByEmail(player.email, {
+              data: { first_name: player.first_name, last_name: player.last_name },
+            });
+
+          if (createError) {
+            errors.push({ row: player.row_number, error: createError.message });
+            continue;
+          }
+
+          const userId = newUser.user.id;
+
+          // Update profile only if primary
+          if (isPrimary) {
+            await serviceClient.from("profiles").update({
+              first_name: player.first_name,
+              last_name: player.last_name,
+              gender: player.gender || null,
+              date_of_birth: player.date_of_birth || null,
+              phone: player.phone || null,
+              suburb: player.suburb || null,
+              hockey_vic_number: player.hockey_vic_number || null,
+              emergency_contact_name: player.emergency_contact_name || null,
+              emergency_contact_phone: player.emergency_contact_phone || null,
+              emergency_contact_relationship: player.emergency_contact_relationship || null,
+            }).eq("id", userId);
+          }
+
+          await serviceClient.from("team_memberships").insert({
+            user_id: userId,
+            team_id: player.team_id,
+            membership_type: membershipType,
+            status: "APPROVED",
+          });
+
+          await serviceClient.from("user_roles").insert({
+            user_id: userId,
+            role: "PLAYER",
+            team_id: player.team_id,
+          });
+
+          created.push(player.row_number);
+        }
       } catch (err) {
         console.error(`Row ${player.row_number} error:`, err);
         errors.push({ row: player.row_number, error: "Unexpected error" });
@@ -207,7 +332,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ created: created.length, errors }),
+      JSON.stringify({ created: created.length, added: added.length, errors }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

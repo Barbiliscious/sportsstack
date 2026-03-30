@@ -50,12 +50,14 @@ interface ParsedRow {
   emergency_contact_name: string;
   emergency_contact_phone: string;
   emergency_contact_relationship: string;
+  is_primary_team: boolean;
   errors: string[];
   team_id: string | null;
 }
 
 interface ImportResult {
   created: number;
+  added: number;
   errors: Array<{ row: number; error: string }>;
 }
 
@@ -179,22 +181,36 @@ const BulkImport = () => {
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
-        const parsed = json.map((row, i) => ({
-          row_number: i + 2, // header is row 1
-          first_name: String(row["first_name"] || row["First Name"] || row["FirstName"] || "").trim(),
-          last_name: String(row["last_name"] || row["Last Name"] || row["LastName"] || "").trim(),
-          email: String(row["email"] || row["Email"] || "").trim(),
-          gender: String(row["gender"] || row["Gender"] || "").trim(),
-          date_of_birth: String(row["date_of_birth"] || row["DOB"] || row["Date of Birth"] || "").trim(),
-          hockey_vic_number: String(row["hockey_vic_number"] || row["HV Number"] || row["HV_Number"] || "").trim(),
-          club_name: String(row["club_name"] || row["Club"] || row["Club Name"] || "").trim(),
-          division: String(row["division"] || row["Division"] || row["Comp"] || "").trim(),
-          phone: String(row["phone"] || row["Phone"] || "").trim(),
-          suburb: String(row["suburb"] || row["Suburb"] || row["Address"] || "").trim(),
-          emergency_contact_name: String(row["emergency_contact_name"] || row["Emergency Contact Name"] || row["EC Name"] || "").trim(),
-          emergency_contact_phone: String(row["emergency_contact_phone"] || row["Emergency Contact Phone"] || row["EC Phone"] || "").trim(),
-          emergency_contact_relationship: String(row["emergency_contact_relationship"] || row["Emergency Contact Relationship"] || row["EC Relationship"] || "").trim(),
-        }));
+        const parsed = json.map((row, i) => {
+          // Convert DD/MM/YYYY to YYYY-MM-DD
+          let dob = String(row["date_of_birth"] || row["DOB"] || row["Date of Birth"] || "").trim();
+          if (dob && dob.includes("/")) {
+            const parts = dob.split("/");
+            if (parts.length === 3) {
+              dob = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+          }
+
+          const isPrimaryRaw = String(row["is_primary_team"] || row["Is Primary Team"] || "").trim().toLowerCase();
+
+          return {
+            row_number: i + 2,
+            first_name: String(row["first_name"] || row["First Name"] || row["FirstName"] || "").trim(),
+            last_name: String(row["last_name"] || row["Last Name"] || row["LastName"] || "").trim(),
+            email: String(row["email"] || row["Email"] || "").trim(),
+            gender: String(row["gender"] || row["Gender"] || "").trim(),
+            date_of_birth: dob,
+            hockey_vic_number: String(row["hockey_vic_number"] || row["HV Number"] || row["HV_Number"] || "").trim(),
+            club_name: String(row["club_name"] || row["Club"] || row["Club Name"] || row["club"] || "").trim(),
+            division: String(row["division"] || row["Division"] || row["Comp"] || row["competition"] || "").trim(),
+            phone: String(row["phone"] || row["Phone"] || "").trim(),
+            suburb: String(row["suburb"] || row["Suburb"] || row["Address"] || "").trim(),
+            emergency_contact_name: String(row["emergency_contact_name"] || row["Emergency Contact Name"] || row["EC Name"] || "").trim(),
+            emergency_contact_phone: String(row["emergency_contact_phone"] || row["Emergency Contact Phone"] || row["EC Phone"] || "").trim(),
+            emergency_contact_relationship: String(row["emergency_contact_relationship"] || row["Emergency Contact Relationship"] || row["EC Relationship"] || "").trim(),
+            is_primary_team: isPrimaryRaw === "yes" || isPrimaryRaw === "true" || isPrimaryRaw === "1",
+          };
+        });
 
         setRows(validateRows(parsed));
       } catch {
@@ -245,6 +261,7 @@ const BulkImport = () => {
           emergency_contact_phone: r.emergency_contact_phone || null,
           emergency_contact_relationship: r.emergency_contact_relationship || null,
           team_id: r.team_id,
+          is_primary_team: r.is_primary_team,
           row_number: r.row_number,
         })),
       },
@@ -263,7 +280,7 @@ const BulkImport = () => {
     setImportResult(data as ImportResult);
     toast({
       title: "Import Complete",
-      description: `${data.created} player(s) created. ${data.errors?.length || 0} failed.`,
+      description: `${data.created} new player(s) created. ${data.added || 0} added to additional teams. ${data.errors?.length || 0} failed.`,
     });
   };
 
@@ -458,7 +475,10 @@ const BulkImport = () => {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm">
-              <span className="font-semibold text-green-600">{importResult.created}</span> player(s) created successfully.
+              <span className="font-semibold text-green-600">{importResult.created}</span> new player(s) created.
+              {importResult.added > 0 && (
+                <> <span className="font-semibold text-blue-600">{importResult.added}</span> added to additional teams.</>
+              )}
             </p>
             {importResult.errors.length > 0 && (
               <div className="space-y-1">
