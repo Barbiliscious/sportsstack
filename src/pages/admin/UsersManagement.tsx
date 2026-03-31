@@ -132,9 +132,41 @@ const UsersManagement = () => {
     setLoading(false);
   };
 
+  const fetchPrimaryRequests = async () => {
+    const { data } = await supabase
+      .from("primary_change_requests")
+      .select("*")
+      .eq("status", "PENDING")
+      .order("requested_at", { ascending: false });
+    
+    if (data && data.length > 0) {
+      // Fetch team names and user profiles
+      const teamIds = [...new Set([...data.map((r: any) => r.to_team_id), ...data.filter((r: any) => r.from_team_id).map((r: any) => r.from_team_id)])];
+      const userIds = [...new Set(data.map((r: any) => r.user_id))];
+      
+      const [teamsRes, profilesRes] = await Promise.all([
+        supabase.from("teams").select("id, name").in("id", teamIds),
+        supabase.from("profiles").select("id, first_name, last_name").in("id", userIds),
+      ]);
+      
+      const teamNameMap = new Map((teamsRes.data || []).map((t: any) => [t.id, t.name]));
+      const profileMap = new Map((profilesRes.data || []).map((p: any) => [p.id, `${p.first_name || ""} ${p.last_name || ""}`.trim()]));
+      
+      setPrimaryRequests(data.map((r: any) => ({
+        ...r,
+        user_name: profileMap.get(r.user_id) || "Unknown",
+        from_team_name: r.from_team_id ? teamNameMap.get(r.from_team_id) || "Unknown" : null,
+        to_team_name: teamNameMap.get(r.to_team_id) || "Unknown",
+      })));
+    } else {
+      setPrimaryRequests([]);
+    }
+  };
+
   useEffect(() => {
     if (!scopeLoading && isAnyAdmin) {
       fetchUsers();
+      fetchPrimaryRequests();
     }
   }, [scopeLoading, isAnyAdmin, isSuperAdmin, scopedTeamIds]);
 
