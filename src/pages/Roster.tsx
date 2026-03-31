@@ -49,7 +49,7 @@ const Roster = () => {
       if (membershipData && membershipData.length > 0) {
         const userIds = membershipData.map((m) => m.user_id);
         const { data: profiles } = await supabase
-          .from("profiles")
+          .from("teammate_profiles")
           .select("id, first_name, last_name")
           .in("id", userIds);
 

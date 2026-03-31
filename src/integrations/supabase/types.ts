@@ -646,9 +646,42 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      teammate_profiles: {
+        Row: {
+          avatar_url: string | null
+          first_name: string | null
+          gender: string | null
+          id: string | null
+          last_name: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          first_name?: string | null
+          gender?: string | null
+          id?: string | null
+          last_name?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          first_name?: string | null
+          gender?: string | null
+          id?: string | null
+          last_name?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      can_grant_role: {
+        Args: {
+          _grantor_id: string
+          _target_association_id: string
+          _target_club_id: string
+          _target_role: Database["public"]["Enums"]["app_role"]
+          _target_team_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
