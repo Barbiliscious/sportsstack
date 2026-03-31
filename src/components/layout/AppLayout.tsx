@@ -301,6 +301,19 @@ const AppLayout = () => {
                 <PopoverContent className="w-72 p-2 bg-background border-border" align="start">
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-muted-foreground px-2 py-1">Select Association</p>
+                    <button
+                      onClick={() => {
+                        navigate(mode === "super_admin" || mode === "association" || mode === "club" ? "/admin" : "/dashboard");
+                        setIsAssociationPopoverOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-2 py-2 rounded-lg text-left transition-colors hover:bg-muted text-foreground"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <LayoutDashboard className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm font-medium">Dashboard</span>
+                    </button>
+                    <div className="h-px bg-border my-1" />
                     {associations.map((assoc) => (
                       <button
                         key={assoc.id}
