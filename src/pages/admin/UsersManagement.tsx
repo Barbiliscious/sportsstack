@@ -58,7 +58,8 @@ const UsersManagement = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [associationFilter, setAssociationFilter] = useState<string>("all");
+  const [clubFilter, setClubFilter] = useState<string>("all");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
