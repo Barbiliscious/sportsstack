@@ -46,6 +46,7 @@ export const TeamMembershipSection = ({
   onCancelRequest,
   onSetPrimaryTeam,
   onRequestAdditionalTeam,
+  onConfirmChange,
   hasApprovedTeams,
 }: TeamMembershipSectionProps) => {
   return (
