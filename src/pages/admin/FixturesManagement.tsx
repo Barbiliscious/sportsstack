@@ -1,11 +1,22 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Download, Calendar } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Download, Calendar, Upload, Pencil, Trash2, Plus, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useTeamContext } from "@/contexts/TeamContext";
 import { useAdminScope } from "@/hooks/useAdminScope";
 import { getTeamDisplayName } from "@/lib/utils";
@@ -27,10 +38,16 @@ interface GameWithTeam {
 }
 
 const FixturesManagement = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const { teams, selectedTeamId, selectedClubId, selectedAssociationId } = useTeamContext();
   const { scopedTeamIds } = useAdminScope();
   const [games, setGames] = useState<GameWithTeam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<GameWithTeam>>({});
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const teamIds = selectedTeamId
     ? [selectedTeamId]
@@ -38,22 +55,23 @@ const FixturesManagement = () => {
     ? scopedTeamIds
     : [];
 
-  useEffect(() => {
-    const fetchGames = async () => {
-      if (teamIds.length === 0) {
-        setGames([]);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      const { data } = await supabase
-        .from("games")
-        .select("*")
-        .in("team_id", teamIds)
-        .order("game_date", { ascending: true });
-      setGames((data as GameWithTeam[]) || []);
+  const fetchGames = async () => {
+    if (teamIds.length === 0) {
+      setGames([]);
       setLoading(false);
-    };
+      return;
+    }
+    setLoading(true);
+    const { data } = await supabase
+      .from("games")
+      .select("*")
+      .in("team_id", teamIds)
+      .order("game_date", { ascending: true });
+    setGames((data as GameWithTeam[]) || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
     fetchGames();
   }, [teamIds.join(",")]);
 
@@ -61,13 +79,11 @@ const FixturesManagement = () => {
 
   const handleExport = () => {
     if (games.length === 0) return;
-
     const rows = games.map((g) => {
       const d = new Date(g.game_date);
       const team = teamMap.get(g.team_id);
-      const teamName = team ? getTeamDisplayName(team) : g.team_id;
       return {
-        Team: teamName,
+        Team: team ? getTeamDisplayName(team) : g.team_id,
         Round: g.round_number ?? "",
         Date: d.toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }),
         Day: d.toLocaleDateString("en-AU", { weekday: "short" }),
@@ -81,14 +97,58 @@ const FixturesManagement = () => {
         Notes: g.notes || "",
       };
     });
-
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
-    const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `fixtures-bulk-${dateStr}.xlsx`);
+    XLSX.writeFile(wb, `fixtures-export-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast({ title: "Exported", description: `${games.length} fixtures exported.` });
+  };
 
-    toast({ title: "Fixtures exported", description: `${games.length} games exported to XLSX.` });
+  const startEdit = (g: GameWithTeam) => {
+    setEditingId(g.id);
+    setEditForm({
+      opponent_name: g.opponent_name,
+      location: g.location,
+      status: g.status,
+      home_score: g.home_score,
+      away_score: g.away_score,
+      round_number: g.round_number,
+      notes: g.notes,
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingId) return;
+    const { error } = await supabase.from("games").update({
+      opponent_name: editForm.opponent_name,
+      location: editForm.location || null,
+      status: editForm.status,
+      home_score: editForm.home_score ?? null,
+      away_score: editForm.away_score ?? null,
+      round_number: editForm.round_number ?? null,
+      notes: editForm.notes || null,
+    }).eq("id", editingId);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Updated", description: "Fixture updated successfully." });
+      setEditingId(null);
+      fetchGames();
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { error } = await supabase.from("games").delete().eq("id", deleteTarget);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Deleted", description: "Fixture deleted." });
+      fetchGames();
+    }
+    setDeleteDialogOpen(false);
+    setDeleteTarget(null);
   };
 
   return (
@@ -99,25 +159,24 @@ const FixturesManagement = () => {
             FIXTURES MANAGEMENT
           </h1>
           <p className="text-muted-foreground mt-1">
-            Export and manage fixtures across teams
+            Import, edit, and manage fixtures across teams
           </p>
         </div>
-
-        <Button
-          onClick={handleExport}
-          disabled={games.length === 0}
-          className="gap-2"
-        >
-          <Download className="h-4 w-4" />
-          Export All ({games.length})
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate("/admin/fixture-import")} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Import
+          </Button>
+          <Button variant="outline" onClick={handleExport} disabled={games.length === 0} className="gap-2">
+            <Download className="h-4 w-4" />
+            Export ({games.length})
+          </Button>
+        </div>
       </div>
 
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
       ) : games.length === 0 ? (
         <Card variant="ghost" className="text-center py-12">
@@ -125,74 +184,133 @@ const FixturesManagement = () => {
           <p className="text-muted-foreground">
             {teamIds.length === 0
               ? "Select a scope using the header selectors to view fixtures."
-              : "No fixtures found for the selected scope."}
+              : "No fixtures found. Import fixtures or add one manually."}
           </p>
         </Card>
       ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {games.length} Fixture{games.length !== 1 ? "s" : ""} Found
+              {games.length} Fixture{games.length !== 1 ? "s" : ""}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Team</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Rd</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Date</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">H/A</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Opponent</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Location</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Status</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Score</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Rd</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>H/A</TableHead>
+                    <TableHead>Opponent</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Score</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {games.map((g) => {
                     const d = new Date(g.game_date);
                     const team = teamMap.get(g.team_id);
+                    const isEditing = editingId === g.id;
+
                     return (
-                      <tr key={g.id} className="border-b border-border/50 hover:bg-muted/30">
-                        <td className="py-2 px-3 text-foreground">
+                      <TableRow key={g.id}>
+                        <TableCell className="text-foreground">
                           {team ? getTeamDisplayName(team) : "—"}
-                        </td>
-                        <td className="py-2 px-3 text-foreground">
-                          {g.round_number ?? "—"}
-                        </td>
-                        <td className="py-2 px-3 text-foreground whitespace-nowrap">
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input className="h-7 w-14 text-xs" type="number" value={editForm.round_number ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, round_number: e.target.value ? parseInt(e.target.value) : null }))} />
+                          ) : (
+                            g.round_number ?? "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-foreground">
                           {d.toLocaleDateString("en-AU", { day: "2-digit", month: "short" })}
-                        </td>
-                        <td className="py-2 px-3">
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={g.is_home ? "default" : "outline"} className="text-xs">
                             {g.is_home ? "H" : "A"}
                           </Badge>
-                        </td>
-                        <td className="py-2 px-3 text-foreground">{g.opponent_name}</td>
-                        <td className="py-2 px-3 text-muted-foreground truncate max-w-[150px]">
-                          {g.location || "—"}
-                        </td>
-                        <td className="py-2 px-3">
-                          <Badge variant="secondary" className="text-xs capitalize">
-                            {g.status}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-3 text-foreground">
-                          {g.home_score !== null && g.away_score !== null
-                            ? `${g.home_score}-${g.away_score}`
-                            : "—"}
-                        </td>
-                      </tr>
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input className="h-7 w-32 text-xs" value={editForm.opponent_name || ""} onChange={(e) => setEditForm((p) => ({ ...p, opponent_name: e.target.value }))} />
+                          ) : (
+                            g.opponent_name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input className="h-7 w-32 text-xs" value={editForm.location || ""} onChange={(e) => setEditForm((p) => ({ ...p, location: e.target.value }))} />
+                          ) : (
+                            <span className="text-muted-foreground truncate max-w-[150px] block">{g.location || "—"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Select value={editForm.status} onValueChange={(v) => setEditForm((p) => ({ ...p, status: v }))}>
+                              <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="scheduled">Scheduled</SelectItem>
+                                <SelectItem value="completed">Completed</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                                <SelectItem value="postponed">Postponed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs capitalize">{g.status}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="flex items-center gap-1">
+                              <Input className="h-7 w-12 text-xs" type="number" value={editForm.home_score ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, home_score: e.target.value ? parseInt(e.target.value) : null }))} />
+                              <span>-</span>
+                              <Input className="h-7 w-12 text-xs" type="number" value={editForm.away_score ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, away_score: e.target.value ? parseInt(e.target.value) : null }))} />
+                            </div>
+                          ) : (
+                            g.home_score !== null && g.away_score !== null ? `${g.home_score}-${g.away_score}` : "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {isEditing ? (
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveEdit}><Save className="h-3 w-3" /></Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(null)}><X className="h-3 w-3" /></Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(g)}><Pencil className="h-3 w-3" /></Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => { setDeleteTarget(g.id); setDeleteDialogOpen(true); }}><Trash2 className="h-3 w-3" /></Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Fixture</DialogTitle>
+            <DialogDescription>Are you sure? This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

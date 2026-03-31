@@ -20,11 +20,12 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
-import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download } from "lucide-react";
+import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminScope } from "@/hooks/useAdminScope";
+import { useAuth } from "@/contexts/AuthContext";
 import { getRoleDisplayName, getRoleBadgeColor } from "@/hooks/useUserRole";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -49,6 +50,7 @@ const ALL_ROLES: AppRole[] = ["PLAYER", "COACH", "TEAM_MANAGER", "CLUB_ADMIN", "
 const UsersManagement = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const { loading: scopeLoading, isSuperAdmin, isAnyAdmin, scopedTeamIds, scopedClubIds, scopedAssociationIds } = useAdminScope();
 
   const [users, setUsers] = useState<UserWithRoles[]>([]);
@@ -58,12 +60,13 @@ const UsersManagement = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [associationFilter, setAssociationFilter] = useState<string>("all");
+  const [clubFilter, setClubFilter] = useState<string>("all");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
   const [saving, setSaving] = useState(false);
-
+  const [primaryRequests, setPrimaryRequests] = useState<any[]>([]);
   useEffect(() => {
     if (!scopeLoading && !isAnyAdmin) {
       navigate("/dashboard");
@@ -131,9 +134,41 @@ const UsersManagement = () => {
     setLoading(false);
   };
 
+  const fetchPrimaryRequests = async () => {
+    const { data } = await supabase
+      .from("primary_change_requests")
+      .select("*")
+      .eq("status", "PENDING")
+      .order("requested_at", { ascending: false });
+    
+    if (data && data.length > 0) {
+      // Fetch team names and user profiles
+      const teamIds = [...new Set([...data.map((r: any) => r.to_team_id), ...data.filter((r: any) => r.from_team_id).map((r: any) => r.from_team_id)])];
+      const userIds = [...new Set(data.map((r: any) => r.user_id))];
+      
+      const [teamsRes, profilesRes] = await Promise.all([
+        supabase.from("teams").select("id, name").in("id", teamIds),
+        supabase.from("profiles").select("id, first_name, last_name").in("id", userIds),
+      ]);
+      
+      const teamNameMap = new Map((teamsRes.data || []).map((t: any) => [t.id, t.name]));
+      const profileMap = new Map((profilesRes.data || []).map((p: any) => [p.id, `${p.first_name || ""} ${p.last_name || ""}`.trim()]));
+      
+      setPrimaryRequests(data.map((r: any) => ({
+        ...r,
+        user_name: profileMap.get(r.user_id) || "Unknown",
+        from_team_name: r.from_team_id ? teamNameMap.get(r.from_team_id) || "Unknown" : null,
+        to_team_name: teamNameMap.get(r.to_team_id) || "Unknown",
+      })));
+    } else {
+      setPrimaryRequests([]);
+    }
+  };
+
   useEffect(() => {
     if (!scopeLoading && isAnyAdmin) {
       fetchUsers();
+      fetchPrimaryRequests();
     }
   }, [scopeLoading, isAnyAdmin, isSuperAdmin, scopedTeamIds]);
 
@@ -148,16 +183,34 @@ const UsersManagement = () => {
         if (!user.memberships.some((m) => m.status === statusFilter)) return false;
       }
     }
-    if (teamFilter !== "all") {
-      if (!user.memberships.some((m) => m.team_id === teamFilter)) return false;
+    if (associationFilter !== "all") {
+      const assocTeamIds = teams
+        .filter((t) => {
+          const club = clubs.find((c) => c.id === t.club_id);
+          return club?.association_id === associationFilter;
+        })
+        .map((t) => t.id);
+      if (!user.memberships.some((m) => assocTeamIds.includes(m.team_id))) return false;
+    }
+    if (clubFilter !== "all") {
+      const clubTeamIds = teams.filter((t) => t.club_id === clubFilter).map((t) => t.id);
+      if (!user.memberships.some((m) => clubTeamIds.includes(m.team_id))) return false;
     }
     return true;
   });
 
-  // Available teams for filter dropdown (scoped)
-  const availableTeams = isSuperAdmin
-    ? teams
-    : teams.filter((t) => scopedTeamIds.includes(t.id));
+  // Available associations and clubs for filter dropdowns (scoped)
+  const availableAssociations = isSuperAdmin
+    ? associations
+    : associations.filter((a) => scopedAssociationIds.includes(a.id));
+
+  const availableClubs = clubs.filter((c) => {
+    if (associationFilter !== "all") return c.association_id === associationFilter;
+    if (!isSuperAdmin) {
+      return scopedClubIds.includes(c.id) || scopedAssociationIds.includes(c.association_id);
+    }
+    return true;
+  });
 
   const handleExport = () => {
     if (filteredUsers.length === 0) return;
@@ -197,6 +250,26 @@ const UsersManagement = () => {
     const today = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `players-export-${today}.xlsx`);
     toast({ title: "Export Complete", description: `${exportData.length} player(s) exported.` });
+  };
+
+  const handleApprovePrimaryRequest = async (requestId: string) => {
+    const { error } = await supabase.from("primary_change_requests").update({ status: "ADMIN_APPROVED", resolved_by: user?.id }).eq("id", requestId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to approve request.", variant: "destructive" });
+    } else {
+      toast({ title: "Approved", description: "Primary team change approved. User must confirm." });
+      fetchPrimaryRequests();
+    }
+  };
+
+  const handleDeclinePrimaryRequest = async (requestId: string) => {
+    const { error } = await supabase.from("primary_change_requests").update({ status: "DECLINED", resolved_by: user?.id, resolved_at: new Date().toISOString() }).eq("id", requestId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to decline request.", variant: "destructive" });
+    } else {
+      toast({ title: "Declined", description: "Primary team change request declined." });
+      fetchPrimaryRequests();
+    }
   };
 
   const handleApproveMembership = async (membershipId: string) => {
@@ -350,18 +423,65 @@ const UsersManagement = () => {
             {isSuperAdmin && <SelectItem value="unassigned">Unassigned</SelectItem>}
           </SelectContent>
         </Select>
-        <Select value={teamFilter} onValueChange={setTeamFilter}>
+        <Select value={associationFilter} onValueChange={(v) => { setAssociationFilter(v); setClubFilter("all"); }}>
           <SelectTrigger className="w-48">
-            <SelectValue placeholder="Team" />
+            <SelectValue placeholder="Association" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Teams</SelectItem>
-            {availableTeams.map((t) => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            <SelectItem value="all">All Associations</SelectItem>
+            {availableAssociations.map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={clubFilter} onValueChange={setClubFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Club" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Clubs</SelectItem>
+            {availableClubs.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
+
+      {/* Pending Primary Team Change Requests */}
+      {primaryRequests.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <RefreshCw className="h-5 w-5" />
+              Pending Primary Team Changes ({primaryRequests.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {primaryRequests.map((req: any) => (
+                <div key={req.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium text-foreground">{req.user_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {req.from_team_name
+                        ? `${req.from_team_name} → ${req.to_team_name}`
+                        : `Set ${req.to_team_name} as primary`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleApprovePrimaryRequest(req.id)}>
+                      <Check className="h-3 w-3 mr-1" /> Approve
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeclinePrimaryRequest(req.id)}>
+                      <X className="h-3 w-3 mr-1" /> Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Table */}
       <Card>

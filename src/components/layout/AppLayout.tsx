@@ -301,6 +301,19 @@ const AppLayout = () => {
                 <PopoverContent className="w-72 p-2 bg-background border-border" align="start">
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-muted-foreground px-2 py-1">Select Association</p>
+                    <button
+                      onClick={() => {
+                        navigate(mode === "super_admin" || mode === "association" || mode === "club" ? "/admin" : "/dashboard");
+                        setIsAssociationPopoverOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-2 py-2 rounded-lg text-left transition-colors hover:bg-muted text-foreground"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <LayoutDashboard className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm font-medium">Dashboard</span>
+                    </button>
+                    <div className="h-px bg-border my-1" />
                     {associations.map((assoc) => (
                       <button
                         key={assoc.id}
@@ -342,11 +355,14 @@ const AppLayout = () => {
 
             {/* Club Selector */}
             {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
-              <Select value={selectedClubId || undefined} onValueChange={setSelectedClubId}>
+              <Select value={selectedClubId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedClubId("") : setSelectedClubId(v)}>
                 <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
+                  {selectedClubId && (
+                    <SelectItem value="__clear__" className="text-muted-foreground italic">All Clubs</SelectItem>
+                  )}
                   {filteredClubs.map((club) => (
                     <SelectItem key={club.id} value={club.id}>
                       {club.name}
@@ -358,11 +374,14 @@ const AppLayout = () => {
 
             {/* Division Selector */}
             {selectedClubId && filteredDivisions.length > 0 && (
-              <Select value={selectedDivision || undefined} onValueChange={setSelectedDivision}>
+              <Select value={selectedDivision || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedDivision("") : setSelectedDivision(v)}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Division" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
+                  {selectedDivision && (
+                    <SelectItem value="__clear__" className="text-muted-foreground italic">All Divisions</SelectItem>
+                  )}
                   {filteredDivisions.map((div) => (
                     <SelectItem key={div} value={div}>
                       {div}
@@ -374,11 +393,14 @@ const AppLayout = () => {
 
             {/* Team Selector */}
             {selectedClubId && (filteredDivisions.length === 0 || selectedDivision) && filteredTeams.length > 0 && (
-              <Select value={selectedTeamId || undefined} onValueChange={setSelectedTeamId}>
+              <Select value={selectedTeamId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedTeamId("") : setSelectedTeamId(v)}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Team" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
+                  {selectedTeamId && (
+                    <SelectItem value="__clear__" className="text-muted-foreground italic">All Teams</SelectItem>
+                  )}
                   {filteredTeams.map((team) => (
                     <SelectItem key={team.id} value={team.id}>
                       {getTeamDisplayName(team)}
@@ -459,7 +481,7 @@ const AppLayout = () => {
 
       <div className="flex flex-1">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex flex-col w-56 min-h-[calc(100vh-3.5rem)] bg-accent border-r border-border">
+        <aside className="hidden lg:flex flex-col w-56 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto bg-accent border-r border-border">
           {renderSidebar(false)}
         </aside>
 

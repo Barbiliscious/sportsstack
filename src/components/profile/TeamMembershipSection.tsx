@@ -34,6 +34,7 @@ interface TeamMembershipSectionProps {
   onCancelRequest?: () => void;
   onSetPrimaryTeam?: () => void;
   onRequestAdditionalTeam?: () => void;
+  onConfirmChange?: () => void;
   hasApprovedTeams: boolean;
 }
 
@@ -45,6 +46,7 @@ export const TeamMembershipSection = ({
   onCancelRequest,
   onSetPrimaryTeam,
   onRequestAdditionalTeam,
+  onConfirmChange,
   hasApprovedTeams,
 }: TeamMembershipSectionProps) => {
   return (
@@ -104,27 +106,41 @@ export const TeamMembershipSection = ({
             </div>
           )}
 
-          {/* Pending Change Request */}
+          {/* Pending / Admin-Approved Change Request */}
           {pendingChangeRequest && (
             <div className="mt-4 p-3 bg-muted rounded-lg border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4 text-accent animate-spin" />
+                  <RefreshCw className={`h-4 w-4 text-accent ${pendingChangeRequest.status === "PENDING" ? "animate-spin" : ""}`} />
                   <span className="text-sm font-medium text-foreground">
-                    Change Request Pending
+                    {pendingChangeRequest.status === "ADMIN_APPROVED"
+                      ? "Change Approved — Confirm to Complete"
+                      : "Change Request Pending"}
                   </span>
                 </div>
-                {onCancelRequest && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={onCancelRequest}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Cancel
-                  </Button>
-                )}
+                <div className="flex items-center gap-1">
+                  {pendingChangeRequest.status === "ADMIN_APPROVED" && onConfirmChange && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-7 px-3"
+                      onClick={onConfirmChange}
+                    >
+                      Confirm Change
+                    </Button>
+                  )}
+                  {onCancelRequest && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={onCancelRequest}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {pendingChangeRequest.fromTeamName
