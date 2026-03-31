@@ -29,6 +29,7 @@ import UsersManagement from "./pages/admin/UsersManagement";
 import AddPlayer from "./pages/admin/AddPlayer";
 import BulkImport from "./pages/admin/BulkImport";
 import FixturesManagement from "./pages/admin/FixturesManagement";
+import FixtureImport from "./pages/admin/FixtureImport";
 
 // Layout
 import AppLayout from "./components/layout/AppLayout";
