@@ -50,7 +50,7 @@ const Chat = () => {
       if (data && data.length > 0) {
         const userIds = [...new Set(data.map((m) => m.user_id))];
         const { data: profiles } = await supabase
-          .from("profiles")
+          .from("teammate_profiles")
           .select("id, first_name, last_name")
           .in("id", userIds);
 

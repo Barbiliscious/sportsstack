@@ -89,7 +89,7 @@ const GameDetail = () => {
           const userIds = members.map((m) => m.user_id);
 
           const [profilesRes, availRes] = await Promise.all([
-            supabase.from("profiles").select("id, first_name, last_name").in("id", userIds),
+            supabase.from("teammate_profiles").select("id, first_name, last_name").in("id", userIds),
             supabase.from("game_availability").select("user_id, status").eq("game_id", id).in("user_id", userIds),
           ]);
 
