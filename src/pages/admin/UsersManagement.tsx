@@ -369,14 +369,25 @@ const UsersManagement = () => {
             {isSuperAdmin && <SelectItem value="unassigned">Unassigned</SelectItem>}
           </SelectContent>
         </Select>
-        <Select value={teamFilter} onValueChange={setTeamFilter}>
+        <Select value={associationFilter} onValueChange={(v) => { setAssociationFilter(v); setClubFilter("all"); }}>
           <SelectTrigger className="w-48">
-            <SelectValue placeholder="Team" />
+            <SelectValue placeholder="Association" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Teams</SelectItem>
-            {availableTeams.map((t) => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            <SelectItem value="all">All Associations</SelectItem>
+            {availableAssociations.map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={clubFilter} onValueChange={setClubFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Club" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Clubs</SelectItem>
+            {availableClubs.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
