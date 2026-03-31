@@ -149,16 +149,34 @@ const UsersManagement = () => {
         if (!user.memberships.some((m) => m.status === statusFilter)) return false;
       }
     }
-    if (teamFilter !== "all") {
-      if (!user.memberships.some((m) => m.team_id === teamFilter)) return false;
+    if (associationFilter !== "all") {
+      const assocTeamIds = teams
+        .filter((t) => {
+          const club = clubs.find((c) => c.id === t.club_id);
+          return club?.association_id === associationFilter;
+        })
+        .map((t) => t.id);
+      if (!user.memberships.some((m) => assocTeamIds.includes(m.team_id))) return false;
+    }
+    if (clubFilter !== "all") {
+      const clubTeamIds = teams.filter((t) => t.club_id === clubFilter).map((t) => t.id);
+      if (!user.memberships.some((m) => clubTeamIds.includes(m.team_id))) return false;
     }
     return true;
   });
 
-  // Available teams for filter dropdown (scoped)
-  const availableTeams = isSuperAdmin
-    ? teams
-    : teams.filter((t) => scopedTeamIds.includes(t.id));
+  // Available associations and clubs for filter dropdowns (scoped)
+  const availableAssociations = isSuperAdmin
+    ? associations
+    : associations.filter((a) => scopedAssociationIds.includes(a.id));
+
+  const availableClubs = clubs.filter((c) => {
+    if (associationFilter !== "all") return c.association_id === associationFilter;
+    if (!isSuperAdmin) {
+      return scopedClubIds.includes(c.id) || scopedAssociationIds.includes(c.association_id);
+    }
+    return true;
+  });
 
   const handleExport = () => {
     if (filteredUsers.length === 0) return;
