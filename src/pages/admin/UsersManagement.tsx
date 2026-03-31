@@ -64,7 +64,7 @@ const UsersManagement = () => {
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
   const [saving, setSaving] = useState(false);
-
+  const [primaryRequests, setPrimaryRequests] = useState<any[]>([]);
   useEffect(() => {
     if (!scopeLoading && !isAnyAdmin) {
       navigate("/dashboard");
