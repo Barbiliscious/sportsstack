@@ -459,7 +459,7 @@ const AppLayout = () => {
 
       <div className="flex flex-1">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex flex-col w-56 min-h-[calc(100vh-3.5rem)] bg-accent border-r border-border">
+        <aside className="hidden lg:flex flex-col w-56 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto bg-accent border-r border-border">
           {renderSidebar(false)}
         </aside>
 
