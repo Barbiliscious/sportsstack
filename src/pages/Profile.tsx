@@ -238,7 +238,7 @@ const Profile = () => {
         requested_at
       `)
       .eq("user_id", user.id)
-      .eq("status", "PENDING")
+      .in("status", ["PENDING", "ADMIN_APPROVED"])
       .maybeSingle();
 
     if (changeRequestError) {
