@@ -752,6 +752,7 @@ const Profile = () => {
         pendingChangeRequest={pendingChangeRequestForDisplay}
         onRequestChange={handleRequestPrimaryChange}
         onCancelRequest={handleCancelChangeRequest}
+        onConfirmChange={handleConfirmChange}
         onSetPrimaryTeam={() => setSetPrimaryDialogOpen(true)}
         hasApprovedTeams={approvedMemberships.length > 0}
         onRequestAdditionalTeam={() => setRequestAdditionalDialogOpen(true)}
