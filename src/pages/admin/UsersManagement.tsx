@@ -250,6 +250,26 @@ const UsersManagement = () => {
     toast({ title: "Export Complete", description: `${exportData.length} player(s) exported.` });
   };
 
+  const handleApprovePrimaryRequest = async (requestId: string) => {
+    const { error } = await supabase.from("primary_change_requests").update({ status: "ADMIN_APPROVED", resolved_by: user?.id }).eq("id", requestId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to approve request.", variant: "destructive" });
+    } else {
+      toast({ title: "Approved", description: "Primary team change approved. User must confirm." });
+      fetchPrimaryRequests();
+    }
+  };
+
+  const handleDeclinePrimaryRequest = async (requestId: string) => {
+    const { error } = await supabase.from("primary_change_requests").update({ status: "DECLINED", resolved_by: user?.id, resolved_at: new Date().toISOString() }).eq("id", requestId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to decline request.", variant: "destructive" });
+    } else {
+      toast({ title: "Declined", description: "Primary team change request declined." });
+      fetchPrimaryRequests();
+    }
+  };
+
   const handleApproveMembership = async (membershipId: string) => {
     const { error } = await supabase.from("team_memberships").update({ status: "APPROVED" }).eq("id", membershipId);
     if (error) {
