@@ -1,70 +1,82 @@
 
 
-# Mock Data Cleanup & Bulk Import Enhancement
+# Security Fixes Plan
 
-## Overview
-Three changes: (1) clean the CSV data, (2) update the bulk import edge function to handle duplicate emails with primary/additional team logic, (3) update the frontend to parse the new columns and convert dates.
+## Active Findings (5 actionable)
+
+### 1. Sensitive Profile Fields Exposed to Teammates (ERROR)
+**Problem:** The "Team members can view teammate profiles" policy exposes all columns including `admin_notes`, `emergency_contact_*`, `date_of_birth`, `phone`, `suburb`, `hockey_vic_number`.
+
+**Fix:** Replace the teammate RLS policy with a security-barrier view that only exposes safe columns (`id`, `first_name`, `last_name`, `avatar_url`, `gender`). Update frontend code to query this view for teammate lookups instead of the `profiles` table directly.
+
+- Create `public.teammate_profiles` view with restricted columns
+- Enable RLS-like access via the view's underlying query (filter by shared team membership)
+- Drop the "Team members can view teammate profiles" policy on `profiles`
+- Keep the "Admins can view scoped profiles" policy (admins need full access)
+
+### 2. Privilege Escalation via Role Insertion (ERROR)
+**Problem:** `CLUB_ADMIN` can insert `SUPER_ADMIN` or `ASSOCIATION_ADMIN` roles. No scope validation on INSERT/UPDATE.
+
+**Fix:** Create a `SECURITY DEFINER` function `public.can_grant_role` that enforces:
+- `SUPER_ADMIN` can grant any role
+- `ASSOCIATION_ADMIN` can only grant `CLUB_ADMIN`, `TEAM_MANAGER`, `COACH`, `PLAYER` within their association
+- `CLUB_ADMIN` can only grant `TEAM_MANAGER`, `COACH`, `PLAYER` within their club's teams
+- Nobody can self-assign roles
+
+Replace the INSERT and UPDATE policies on `user_roles` with policies that call this function.
+
+### 3. Realtime Channel Subscription Not Scoped (ERROR)
+**Problem:** Any authenticated user can subscribe to any team's Realtime channel.
+
+**Fix:** Realtime RLS on `realtime.messages` cannot be modified (reserved schema). Instead, switch the Realtime subscription to use Realtime Authorization by filtering on `team_id` in the channel subscription, and ensure the existing table-level RLS on `team_messages` is the enforcement layer. Add a note that Realtime broadcasts are filtered by Postgres RLS on the source table — this is how Supabase Realtime works by default when using `postgres_changes`. Mark this as mitigated.
+
+### 4. Notifications INSERT Policy Uses Public Role (WARN)
+**Problem:** INSERT policy on `notifications` applies to `public` role instead of `authenticated`.
+
+**Fix:** Drop and recreate the policy targeting `authenticated` role only.
+
+### 5. Leaked Password Protection (WARN)
+**Problem:** Leaked password protection is disabled.
+
+**Fix:** This requires enabling it via auth configuration. Will use the configure_auth tool.
 
 ---
 
-## 1. Clean & Re-export Mock CSVs
+## Migration SQL Summary
 
-**Player CSV** — normalize before import:
-- Set `competition` to "Division 1 Womens" for all rows (per user instruction)
-- Keep `is_primary_team` column as-is (Yes or blank)
-- Convert `date_of_birth` from DD/MM/YYYY to YYYY-MM-DD for DB compatibility
-- Output cleaned CSV to `/mnt/documents/`
+```sql
+-- 1. Create teammate_profiles view (safe columns only)
+CREATE VIEW public.teammate_profiles AS
+SELECT p.id, p.first_name, p.last_name, p.avatar_url, p.gender
+FROM public.profiles p
+WHERE p.id IN (
+  SELECT tm2.user_id FROM public.team_memberships tm1
+  JOIN public.team_memberships tm2 ON tm1.team_id = tm2.team_id
+  WHERE tm1.user_id = auth.uid()
+    AND tm1.status = 'APPROVED' AND tm2.status = 'APPROVED'
+);
 
-**Fixture CSV** — normalize:
-- Set `competition` to "Division 1 Womens" for all rows
-- Keep TBD opponents as-is
-- Dates are already in YYYY-MM-DD format, no change needed
-- Output cleaned CSV to `/mnt/documents/`
+-- Drop overly broad teammate policy
+DROP POLICY "Team members can view teammate profiles" ON public.profiles;
 
----
+-- 2. Scoped role granting function + updated policies
+CREATE FUNCTION public.can_grant_role(...) ...
+DROP POLICY "Admins can insert roles" ON public.user_roles;
+DROP POLICY "Admins can update roles" ON public.user_roles;
+CREATE POLICY ... WITH CHECK (public.can_grant_role(...));
 
-## 2. Bulk Import Edge Function (`supabase/functions/bulk-import/index.ts`)
-
-Add `is_primary_team` boolean to the `PlayerRow` interface.
-
-**New duplicate-email logic** (replaces the current "invite or fail" approach):
-
+-- 3. Fix notifications INSERT policy
+DROP POLICY "System and admins can create notifications" ON public.notifications;
+CREATE POLICY ... TO authenticated ...;
 ```
-For each player row:
-  1. Check if a user with this email already exists (listUsers by email)
-  2. If user exists:
-     a. If is_primary_team = true:
-        - Check if they already have a PRIMARY membership in this association
-        - If yes → error: "Duplicate primary team in same association"
-        - If no → add PRIMARY membership + update profile details
-     b. If is_primary_team = false/blank:
-        - Just insert a PERMANENT team_membership (additional team)
-        - Do NOT update profile details
-  3. If user doesn't exist:
-     - Invite by email (current flow)
-     - Set membership_type based on is_primary_team flag
-     - Update profile details only for primary team rows
-```
 
----
+## Frontend Changes
+- Search for any code querying `profiles` for teammate data and switch to `teammate_profiles` view
+- Mark realtime finding as mitigated (Supabase postgres_changes already filters by table RLS)
 
-## 3. Frontend (`src/pages/admin/BulkImport.tsx`)
-
-- Add `is_primary_team` to `ParsedRow` interface
-- Parse the column from CSV: `row["is_primary_team"]` / `row["Is Primary Team"]` → boolean (truthy if "Yes")
-- Convert DD/MM/YYYY dates to YYYY-MM-DD during parsing (split on `/`, rearrange)
-- Pass `is_primary_team` in the payload to the edge function
-- Add `competition` column alias mapping (already partially there via `division` field)
-- Validation: flag duplicate emails that both have `is_primary_team = true` for the same association as client-side warnings
-
----
-
-## Files Summary
-
+## Files
 | File | Change |
 |------|--------|
-| Player CSV | Normalize division to "Division 1 Womens", convert dates — output to `/mnt/documents/` |
-| Fixture CSV | Normalize division to "Division 1 Womens" — output to `/mnt/documents/` |
-| `supabase/functions/bulk-import/index.ts` | Add `is_primary_team` field, handle existing users (add as additional team vs error on duplicate primary) |
-| `src/pages/admin/BulkImport.tsx` | Parse `is_primary_team` column, convert DD/MM/YYYY → YYYY-MM-DD, pass flag to edge function |
+| New migration SQL | View, function, policy updates |
+| Frontend files using teammate profiles | Query the new view instead |
 
