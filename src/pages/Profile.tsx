@@ -417,6 +417,40 @@ const Profile = () => {
     }
   };
 
+  const handleConfirmChange = async () => {
+    if (!user || !pendingChangeRequest || pendingChangeRequest.status !== "ADMIN_APPROVED") return;
+
+    // Downgrade old PRIMARY to PERMANENT
+    if (pendingChangeRequest.from_team_id) {
+      await supabase
+        .from("team_memberships")
+        .update({ membership_type: "PERMANENT" })
+        .eq("user_id", user.id)
+        .eq("team_id", pendingChangeRequest.from_team_id)
+        .eq("membership_type", "PRIMARY");
+    }
+
+    // Upgrade new team to PRIMARY
+    const { error: upgradeError } = await supabase
+      .from("team_memberships")
+      .update({ membership_type: "PRIMARY" })
+      .eq("user_id", user.id)
+      .eq("team_id", pendingChangeRequest.to_team_id);
+
+    // Mark request as completed
+    await supabase
+      .from("primary_change_requests")
+      .update({ status: "COMPLETED", resolved_at: new Date().toISOString() })
+      .eq("id", pendingChangeRequest.id);
+
+    if (upgradeError) {
+      toast({ title: "Error", description: "Failed to confirm change.", variant: "destructive" });
+    } else {
+      toast({ title: "Primary Team Changed", description: "Your primary team has been updated." });
+      fetchData();
+    }
+  };
+
   const handleAcceptInvite = async (membershipId: string) => {
     const { error } = await supabase
       .from("team_memberships")
