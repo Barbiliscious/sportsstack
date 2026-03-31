@@ -447,6 +447,42 @@ const UsersManagement = () => {
         </Select>
       </div>
 
+      {/* Pending Primary Team Change Requests */}
+      {primaryRequests.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <RefreshCw className="h-5 w-5" />
+              Pending Primary Team Changes ({primaryRequests.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {primaryRequests.map((req: any) => (
+                <div key={req.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium text-foreground">{req.user_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {req.from_team_name
+                        ? `${req.from_team_name} → ${req.to_team_name}`
+                        : `Set ${req.to_team_name} as primary`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleApprovePrimaryRequest(req.id)}>
+                      <Check className="h-3 w-3 mr-1" /> Approve
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeclinePrimaryRequest(req.id)}>
+                      <X className="h-3 w-3 mr-1" /> Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Table */}
       <Card>
         <CardHeader>
