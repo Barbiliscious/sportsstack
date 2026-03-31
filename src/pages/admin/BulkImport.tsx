@@ -45,12 +45,18 @@ interface ParsedRow {
   hockey_vic_number: string;
   club_name: string;
   division: string;
+  team_name: string;
+  association_name: string;
   phone: string;
   suburb: string;
   emergency_contact_name: string;
   emergency_contact_phone: string;
   emergency_contact_relationship: string;
   is_primary_team: boolean;
+  jersey_number: string;
+  position: string;
+  role: string;
+  notes: string;
   errors: string[];
   team_id: string | null;
 }
@@ -61,18 +67,53 @@ interface ImportResult {
   errors: Array<{ row: number; error: string }>;
 }
 
-const EXPECTED_HEADERS = [
-  "first_name",
-  "last_name",
-  "email",
-  "gender",
-  "date_of_birth",
-  "hockey_vic_number",
-  "club_name",
-  "division",
-  "phone",
-  "suburb",
-];
+const GENDER_OPTIONS = ["Male", "Female", "Other"];
+const ROLE_OPTIONS = ["PLAYER", "COACH", "TEAM_MANAGER", "CLUB_ADMIN", "ASSOCIATION_ADMIN"];
+const POSITION_OPTIONS = ["GK", "FB", "HB", "MF", "IF", "CF"];
+const YES_NO_OPTIONS = ["Yes", "No"];
+
+function parseExcelDate(val: unknown): string {
+  if (!val) return "";
+  const str = String(val).trim();
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // DD/MM/YYYY
+  if (str.includes("/")) {
+    const parts = str.split("/");
+    if (parts.length === 3) {
+      const [d, m, y] = parts;
+      return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    }
+  }
+  // Excel serial number
+  const num = Number(val);
+  if (!isNaN(num) && num > 1000 && num < 100000) {
+    const date = new Date((num - 25569) * 86400 * 1000);
+    if (!isNaN(date.getTime())) {
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(date.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+  }
+  return str;
+}
+
+function formatDateDisplay(isoDate: string): string {
+  if (!isoDate) return "";
+  const parts = isoDate.split("-");
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return isoDate;
+}
+
+function getField(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
+      return String(row[k]).trim();
+    }
+  }
+  return "";
+}
 
 const BulkImport = () => {
   const navigate = useNavigate();
@@ -83,7 +124,7 @@ const BulkImport = () => {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
-  // Association scope selector
+  // Reference data
   const [associations, setAssociations] = useState<{ id: string; name: string }[]>([]);
   const [clubs, setClubs] = useState<{ id: string; name: string; association_id: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string; club_id: string; division: string | null }[]>([]);
@@ -93,7 +134,6 @@ const BulkImport = () => {
     if (!scopeLoading && !isAnyAdmin) navigate("/dashboard");
   }, [scopeLoading, isAnyAdmin, navigate]);
 
-  // Load reference data
   useEffect(() => {
     const load = async () => {
       const [aRes, cRes, tRes] = await Promise.all([
@@ -108,7 +148,6 @@ const BulkImport = () => {
     load();
   }, []);
 
-  // Auto-lock association if only one in scope
   useEffect(() => {
     if (scopeLoading) return;
     if (!isSuperAdmin && scopedAssociationIds.length === 1) {
@@ -120,10 +159,13 @@ const BulkImport = () => {
     ? associations
     : associations.filter((a) => scopedAssociationIds.includes(a.id));
 
-  // Build lookup map: (club_name_lower, division_lower) -> team_id
+  const assocClubs = useMemo(
+    () => clubs.filter((c) => c.association_id === selectedAssociationId),
+    [selectedAssociationId, clubs]
+  );
+
   const teamLookup = useMemo(() => {
     if (!selectedAssociationId) return new Map<string, string>();
-    const assocClubs = clubs.filter((c) => c.association_id === selectedAssociationId);
     const assocClubIds = new Set(assocClubs.map((c) => c.id));
     const assocTeams = teams.filter((t) => assocClubIds.has(t.club_id));
 
@@ -136,7 +178,7 @@ const BulkImport = () => {
       }
     }
     return map;
-  }, [selectedAssociationId, clubs, teams]);
+  }, [selectedAssociationId, assocClubs, teams]);
 
   const validateRows = useCallback(
     (parsed: Omit<ParsedRow, "errors" | "team_id">[]): ParsedRow[] => {
@@ -145,6 +187,9 @@ const BulkImport = () => {
         if (!r.first_name.trim()) errors.push("First name required");
         if (!r.last_name.trim()) errors.push("Last name required");
         if (!r.email.trim()) errors.push("Email required");
+        if (r.gender && !GENDER_OPTIONS.includes(r.gender)) errors.push(`Gender must be one of: ${GENDER_OPTIONS.join(", ")}`);
+        if (r.role && !ROLE_OPTIONS.includes(r.role.toUpperCase())) errors.push(`Role must be one of: ${ROLE_OPTIONS.join(", ")}`);
+        if (r.position && !POSITION_OPTIONS.includes(r.position.toUpperCase())) errors.push(`Position must be one of: ${POSITION_OPTIONS.join(", ")}`);
 
         let team_id: string | null = null;
         if (r.club_name && r.division) {
@@ -153,7 +198,11 @@ const BulkImport = () => {
           if (found) {
             team_id = found;
           } else {
-            errors.push("Club/Division not found");
+            // Suggest similar clubs
+            const clubNames = assocClubs.map((c) => c.name);
+            const similar = clubNames.find((n) => n.toLowerCase().includes(r.club_name.toLowerCase().trim().substring(0, 4)));
+            const hint = similar ? ` Did you mean '${similar}'?` : "";
+            errors.push(`Club '${r.club_name}' / Division '${r.division}' not found in this association.${hint}`);
           }
         } else if (!r.club_name && !r.division) {
           errors.push("Club and Division required");
@@ -164,7 +213,7 @@ const BulkImport = () => {
         return { ...r, errors, team_id };
       });
     },
-    [teamLookup]
+    [teamLookup, assocClubs]
   );
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,33 +231,31 @@ const BulkImport = () => {
         const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
         const parsed = json.map((row, i) => {
-          // Convert DD/MM/YYYY to YYYY-MM-DD
-          let dob = String(row["date_of_birth"] || row["DOB"] || row["Date of Birth"] || "").trim();
-          if (dob && dob.includes("/")) {
-            const parts = dob.split("/");
-            if (parts.length === 3) {
-              dob = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            }
-          }
-
-          const isPrimaryRaw = String(row["is_primary_team"] || row["Is Primary Team"] || "").trim().toLowerCase();
+          const dob = parseExcelDate(row["date_of_birth"] || row["DOB"] || row["Date of Birth"] || "");
+          const isPrimaryRaw = getField(row, "is_primary_team", "Is Primary Team").toLowerCase();
 
           return {
             row_number: i + 2,
-            first_name: String(row["first_name"] || row["First Name"] || row["FirstName"] || "").trim(),
-            last_name: String(row["last_name"] || row["Last Name"] || row["LastName"] || "").trim(),
-            email: String(row["email"] || row["Email"] || "").trim(),
-            gender: String(row["gender"] || row["Gender"] || "").trim(),
+            first_name: getField(row, "first_name", "First Name", "FirstName"),
+            last_name: getField(row, "last_name", "Last Name", "LastName"),
+            email: getField(row, "email", "Email"),
+            gender: getField(row, "gender", "Gender"),
             date_of_birth: dob,
-            hockey_vic_number: String(row["hockey_vic_number"] || row["HV Number"] || row["HV_Number"] || "").trim(),
-            club_name: String(row["club_name"] || row["Club"] || row["Club Name"] || row["club"] || "").trim(),
-            division: String(row["division"] || row["Division"] || row["Comp"] || row["competition"] || "").trim(),
-            phone: String(row["phone"] || row["Phone"] || "").trim(),
-            suburb: String(row["suburb"] || row["Suburb"] || row["Address"] || "").trim(),
-            emergency_contact_name: String(row["emergency_contact_name"] || row["Emergency Contact Name"] || row["EC Name"] || "").trim(),
-            emergency_contact_phone: String(row["emergency_contact_phone"] || row["Emergency Contact Phone"] || row["EC Phone"] || "").trim(),
-            emergency_contact_relationship: String(row["emergency_contact_relationship"] || row["Emergency Contact Relationship"] || row["EC Relationship"] || "").trim(),
+            hockey_vic_number: getField(row, "hockey_vic_number", "HV Number", "HV_Number"),
+            club_name: getField(row, "club_name", "Club", "Club Name", "club"),
+            division: getField(row, "division", "Division", "Comp", "competition"),
+            team_name: getField(row, "team_name", "Team Name", "Team"),
+            association_name: getField(row, "association", "Association", "association_name"),
+            phone: getField(row, "phone", "Phone"),
+            suburb: getField(row, "suburb", "Suburb", "Address"),
+            emergency_contact_name: getField(row, "emergency_contact_name", "Emergency Contact Name", "EC Name"),
+            emergency_contact_phone: getField(row, "emergency_contact_phone", "Emergency Contact Phone", "EC Phone"),
+            emergency_contact_relationship: getField(row, "emergency_contact_relationship", "Emergency Contact Relationship", "EC Relationship"),
             is_primary_team: isPrimaryRaw === "yes" || isPrimaryRaw === "true" || isPrimaryRaw === "1",
+            jersey_number: getField(row, "jersey_number", "Jersey Number", "Jersey"),
+            position: getField(row, "position", "Position"),
+            role: getField(row, "role", "Role"),
+            notes: getField(row, "notes", "Notes"),
           };
         });
 
@@ -224,12 +271,26 @@ const BulkImport = () => {
   useEffect(() => {
     if (rows.length > 0) {
       setRows((prev) =>
-        validateRows(
-          prev.map(({ errors, team_id, ...rest }) => rest)
-        )
+        validateRows(prev.map(({ errors, team_id, ...rest }) => rest))
       );
     }
   }, [teamLookup]);
+
+  // Inline edit a cell
+  const updateRow = (rowNum: number, field: keyof Omit<ParsedRow, "errors" | "team_id" | "row_number">, value: string) => {
+    setRows((prev) => {
+      const updated = prev.map((r) => {
+        if (r.row_number !== rowNum) return r;
+        const newRow = { ...r, [field]: value };
+        if (field === "is_primary_team") {
+          (newRow as any).is_primary_team = value === "Yes" || value === "true";
+        }
+        return newRow;
+      });
+      // Re-validate
+      return validateRows(updated.map(({ errors, team_id, ...rest }) => rest));
+    });
+  };
 
   const validRows = rows.filter((r) => r.errors.length === 0);
   const errorRows = rows.filter((r) => r.errors.length > 0);
@@ -262,6 +323,10 @@ const BulkImport = () => {
           emergency_contact_relationship: r.emergency_contact_relationship || null,
           team_id: r.team_id,
           is_primary_team: r.is_primary_team,
+          jersey_number: r.jersey_number ? parseInt(r.jersey_number) : null,
+          position: r.position || null,
+          role: r.role || null,
+          notes: r.notes || null,
           row_number: r.row_number,
         })),
       },
@@ -284,10 +349,56 @@ const BulkImport = () => {
     });
   };
 
+  const downloadTemplate = () => {
+    const headers = [
+      "first_name", "last_name", "email", "phone", "suburb",
+      "date_of_birth", "gender", "hockey_vic_number",
+      "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
+      "association", "club", "competition", "team_name",
+      "is_primary_team", "jersey_number", "position", "role", "notes",
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
+
+    // Add data validations for dropdown columns
+    if (!ws["!dataValidation"]) (ws as any)["!dataValidation"] = [];
+    const validations: any[] = (ws as any)["!dataValidation"];
+    const maxRows = 200;
+
+    const addValidation = (col: number, options: string[]) => {
+      const colLetter = XLSX.utils.encode_col(col);
+      validations.push({
+        sqref: `${colLetter}2:${colLetter}${maxRows}`,
+        type: "list",
+        formula1: `"${options.join(",")}"`,
+      });
+    };
+
+    const genderCol = headers.indexOf("gender");
+    const isPrimaryCol = headers.indexOf("is_primary_team");
+    const positionCol = headers.indexOf("position");
+    const roleCol = headers.indexOf("role");
+
+    if (genderCol >= 0) addValidation(genderCol, GENDER_OPTIONS);
+    if (isPrimaryCol >= 0) addValidation(isPrimaryCol, YES_NO_OPTIONS);
+    if (positionCol >= 0) addValidation(positionCol, POSITION_OPTIONS);
+    if (roleCol >= 0) addValidation(roleCol, ROLE_OPTIONS);
+
+    // Add association names in a hidden reference if available
+    if (assocClubs.length > 0) {
+      const clubCol = headers.indexOf("club");
+      if (clubCol >= 0) addValidation(clubCol, assocClubs.map((c) => c.name));
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Players");
+    XLSX.writeFile(wb, "player_import_template.xlsx");
+  };
+
   if (scopeLoading) return null;
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/admin/users")}>
@@ -309,9 +420,7 @@ const BulkImport = () => {
             <Label>Association</Label>
             <Select
               value={selectedAssociationId}
-              onValueChange={(v) => {
-                setSelectedAssociationId(v);
-              }}
+              onValueChange={setSelectedAssociationId}
               disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}
             >
               <SelectTrigger>
@@ -319,14 +428,12 @@ const BulkImport = () => {
               </SelectTrigger>
               <SelectContent>
                 {availableAssociations.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
+                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Club and Division columns in your spreadsheet will be matched to teams within this association.
+              Club and Division columns will be matched to teams within this association.
             </p>
           </div>
         </CardContent>
@@ -354,26 +461,7 @@ const BulkImport = () => {
               onChange={handleFileUpload}
               disabled={!selectedAssociationId}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const headers = [
-                  "first_name", "last_name", "email", "phone", "suburb",
-                  "date_of_birth", "gender", "hockey_vic_number",
-                  "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
-                  "association", "club", "competition", "team_name",
-                  "is_primary_team", "jersey_number", "position", "role", "notes",
-                ];
-                const ws = XLSX.utils.aoa_to_sheet([headers]);
-                // Set column widths
-                ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Players");
-                XLSX.writeFile(wb, "player_import_template.xlsx");
-              }}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
               <Download className="h-4 w-4 mr-1" />
               Download Template
             </Button>
@@ -385,8 +473,8 @@ const BulkImport = () => {
             )}
           </div>
           <div className="text-xs text-muted-foreground space-y-1">
-            <p>Expected columns: <span className="font-mono">first_name, last_name, email, gender, date_of_birth, hockey_vic_number, club_name, division, phone, suburb, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship</span></p>
-            <p>Also accepts: First Name, Last Name, Email, Gender, DOB, HV Number, Club, Division, Phone, Suburb/Address, EC Name, EC Phone, EC Relationship</p>
+            <p>Template includes dropdown lists for: <span className="font-medium">Gender, Role, Position, Is Primary Team</span>{assocClubs.length > 0 && <>, <span className="font-medium">Club</span></>}</p>
+            <p>Dates can be DD/MM/YYYY format. Errors can be corrected inline in the preview below.</p>
           </div>
         </CardContent>
       </Card>
@@ -412,20 +500,31 @@ const BulkImport = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-auto max-h-[500px]">
+            <div className="rounded-md border overflow-auto max-h-[600px]">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">#</TableHead>
+                    <TableHead className="w-12 sticky left-0 bg-background z-10">#</TableHead>
                     <TableHead>First Name</TableHead>
                     <TableHead>Last Name</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead>DOB</TableHead>
                     <TableHead>HV #</TableHead>
                     <TableHead>Club</TableHead>
                     <TableHead>Division</TableHead>
-                    <TableHead className="w-24">Status</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Primary</TableHead>
+                    <TableHead>Jersey</TableHead>
+                    <TableHead>Position</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>EC Name</TableHead>
+                    <TableHead>EC Phone</TableHead>
+                    <TableHead>EC Rel</TableHead>
+                    <TableHead>Suburb</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead className="w-32 sticky right-0 bg-background z-10">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -434,24 +533,77 @@ const BulkImport = () => {
                       key={r.row_number}
                       className={r.errors.length > 0 ? "bg-destructive/5" : ""}
                     >
-                      <TableCell className="font-mono text-xs">{r.row_number}</TableCell>
-                      <TableCell>{r.first_name}</TableCell>
-                      <TableCell>{r.last_name}</TableCell>
+                      <TableCell className="font-mono text-xs sticky left-0 bg-background z-10">{r.row_number}</TableCell>
+                      <TableCell className="text-xs">{r.first_name}</TableCell>
+                      <TableCell className="text-xs">{r.last_name}</TableCell>
                       <TableCell className="text-xs">{r.email || <span className="text-destructive italic">missing</span>}</TableCell>
-                      <TableCell>{r.gender}</TableCell>
-                      <TableCell className="text-xs">{r.date_of_birth}</TableCell>
-                      <TableCell className="text-xs">{r.hockey_vic_number}</TableCell>
-                      <TableCell>{r.club_name}</TableCell>
-                      <TableCell>{r.division}</TableCell>
+                      <TableCell className="text-xs">{r.phone}</TableCell>
                       <TableCell>
+                        <Select value={r.gender || undefined} onValueChange={(v) => updateRow(r.row_number, "gender", v)}>
+                          <SelectTrigger className="h-7 w-20 text-xs border-0 p-1">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {GENDER_OPTIONS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{formatDateDisplay(r.date_of_birth)}</TableCell>
+                      <TableCell className="text-xs">{r.hockey_vic_number}</TableCell>
+                      <TableCell>
+                        {assocClubs.length > 0 ? (
+                          <Select value={r.club_name || undefined} onValueChange={(v) => updateRow(r.row_number, "club_name", v)}>
+                            <SelectTrigger className="h-7 w-28 text-xs border-0 p-1">
+                              <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {assocClubs.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-xs">{r.club_name}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">{r.division}</TableCell>
+                      <TableCell className="text-xs">{r.team_name}</TableCell>
+                      <TableCell className="text-xs">{r.is_primary_team ? "Yes" : "No"}</TableCell>
+                      <TableCell className="text-xs">{r.jersey_number}</TableCell>
+                      <TableCell>
+                        <Select value={r.position || undefined} onValueChange={(v) => updateRow(r.row_number, "position", v)}>
+                          <SelectTrigger className="h-7 w-16 text-xs border-0 p-1">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {POSITION_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select value={r.role || undefined} onValueChange={(v) => updateRow(r.row_number, "role", v)}>
+                          <SelectTrigger className="h-7 w-28 text-xs border-0 p-1">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLE_OPTIONS.map((rl) => <SelectItem key={rl} value={rl}>{rl}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-xs">{r.emergency_contact_name}</TableCell>
+                      <TableCell className="text-xs">{r.emergency_contact_phone}</TableCell>
+                      <TableCell className="text-xs">{r.emergency_contact_relationship}</TableCell>
+                      <TableCell className="text-xs">{r.suburb}</TableCell>
+                      <TableCell className="text-xs max-w-[100px] truncate">{r.notes}</TableCell>
+                      <TableCell className="sticky right-0 bg-background z-10">
                         {r.errors.length === 0 ? (
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
                         ) : (
-                          <div className="flex items-center gap-1" title={r.errors.join("; ")}>
-                            <XCircle className="h-4 w-4 text-destructive" />
-                            <span className="text-xs text-destructive truncate max-w-[120px]">
-                              {r.errors[0]}
-                            </span>
+                          <div className="space-y-0.5">
+                            {r.errors.map((err, i) => (
+                              <div key={i} className="flex items-start gap-1">
+                                <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                                <span className="text-xs text-destructive">{err}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </TableCell>
