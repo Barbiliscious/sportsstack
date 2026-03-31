@@ -159,8 +159,14 @@ Deno.serve(async (req) => {
     );
 
     if (createError) {
+      const isDuplicate = createError.message?.toLowerCase().includes("already been registered") ||
+        createError.message?.toLowerCase().includes("already exists") ||
+        createError.message?.toLowerCase().includes("duplicate");
+      const errorMessage = isDuplicate
+        ? `A user with email '${payload.email}' already exists. Use Bulk Import to add them to additional teams.`
+        : createError.message;
       return new Response(
-        JSON.stringify({ error: createError.message }),
+        JSON.stringify({ error: errorMessage }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

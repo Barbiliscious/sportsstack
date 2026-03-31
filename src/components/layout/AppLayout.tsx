@@ -355,11 +355,14 @@ const AppLayout = () => {
 
             {/* Club Selector */}
             {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
-              <Select value={selectedClubId || undefined} onValueChange={setSelectedClubId}>
+              <Select value={selectedClubId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedClubId("") : setSelectedClubId(v)}>
                 <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
+                  {selectedClubId && (
+                    <SelectItem value="__clear__" className="text-muted-foreground italic">All Clubs</SelectItem>
+                  )}
                   {filteredClubs.map((club) => (
                     <SelectItem key={club.id} value={club.id}>
                       {club.name}
@@ -371,11 +374,14 @@ const AppLayout = () => {
 
             {/* Division Selector */}
             {selectedClubId && filteredDivisions.length > 0 && (
-              <Select value={selectedDivision || undefined} onValueChange={setSelectedDivision}>
+              <Select value={selectedDivision || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedDivision("") : setSelectedDivision(v)}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Division" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
+                  {selectedDivision && (
+                    <SelectItem value="__clear__" className="text-muted-foreground italic">All Divisions</SelectItem>
+                  )}
                   {filteredDivisions.map((div) => (
                     <SelectItem key={div} value={div}>
                       {div}
@@ -387,11 +393,14 @@ const AppLayout = () => {
 
             {/* Team Selector */}
             {selectedClubId && (filteredDivisions.length === 0 || selectedDivision) && filteredTeams.length > 0 && (
-              <Select value={selectedTeamId || undefined} onValueChange={setSelectedTeamId}>
+              <Select value={selectedTeamId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedTeamId("") : setSelectedTeamId(v)}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Team" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border">
+                  {selectedTeamId && (
+                    <SelectItem value="__clear__" className="text-muted-foreground italic">All Teams</SelectItem>
+                  )}
                   {filteredTeams.map((team) => (
                     <SelectItem key={team.id} value={team.id}>
                       {getTeamDisplayName(team)}
