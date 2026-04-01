@@ -120,7 +120,7 @@ const TeamsManagement = () => {
     }
     setSaving(true);
     const autoName = formData.division && formData.gender ? `${formData.division} ${formData.gender}` : formData.name.trim();
-    const teamData = { name: autoName, club_id: formData.club_id, age_group: formData.age_group.trim() || null, division: formData.division.trim() || null, gender: formData.gender || null };
+    const teamData = { name: autoName, club_id: formData.club_id, age_group: formData.age_group.trim() || null, division: formData.division.trim() || null, gender: formData.gender || null, team_type: formData.team_type || null } as any;
 
     if (editingTeam) {
       const { error } = await supabase.from("teams").update(teamData).eq("id", editingTeam.id);
