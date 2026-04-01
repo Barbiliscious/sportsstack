@@ -368,6 +368,57 @@ const FixturesManagement = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Fixture Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Fixture</DialogTitle>
+            <DialogDescription>Manually create a single fixture.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Team *</Label>
+              <Select value={addForm.team_id} onValueChange={(v) => setAddForm((p) => ({ ...p, team_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
+                <SelectContent>
+                  {teams.filter((t) => teamIds.includes(t.id)).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{getTeamDisplayName(t)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Opponent *</Label>
+              <Input value={addForm.opponent_name} onChange={(e) => setAddForm((p) => ({ ...p, opponent_name: e.target.value }))} placeholder="Opponent name" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Input type="date" value={addForm.game_date} onChange={(e) => setAddForm((p) => ({ ...p, game_date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Time</Label>
+                <Input type="time" value={addForm.game_time} onChange={(e) => setAddForm((p) => ({ ...p, game_time: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Input value={addForm.location} onChange={(e) => setAddForm((p) => ({ ...p, location: e.target.value }))} placeholder="Ground name" />
+              </div>
+              <div className="space-y-2">
+                <Label>Round</Label>
+                <Input type="number" value={addForm.round_number} onChange={(e) => setAddForm((p) => ({ ...p, round_number: e.target.value }))} placeholder="#" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddFixture}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
