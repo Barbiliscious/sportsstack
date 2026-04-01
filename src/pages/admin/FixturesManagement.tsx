@@ -49,6 +49,10 @@ const FixturesManagement = () => {
   const [editForm, setEditForm] = useState<Partial<GameWithTeam>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ team_id: "", opponent_name: "", game_date: "", game_time: "", location: "", round_number: "", status: "scheduled" });
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterRound, setFilterRound] = useState("");
 
   const teamIds = selectedTeamId
     ? [selectedTeamId]
