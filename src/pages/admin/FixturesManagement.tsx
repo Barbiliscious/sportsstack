@@ -203,12 +203,33 @@ const FixturesManagement = () => {
             <Download className="h-4 w-4" />
             Export ({games.length})
           </Button>
+          <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label>Status:</Label>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="postponed">Postponed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label>Round:</Label>
+          <Input className="w-20 h-9" type="number" placeholder="All" value={filterRound} onChange={(e) => setFilterRound(e.target.value)} />
+        </div>
+      </div>
         </div>
       ) : games.length === 0 ? (
         <Card variant="ghost" className="text-center py-12">
