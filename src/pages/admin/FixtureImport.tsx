@@ -193,7 +193,7 @@ const FixtureImport = () => {
           row_number: i + 2,
           round_number: getField(row, "round_number", "Round", "Rd"),
           date: parseDate(row["date"] || row["Date"] || row["game_date"] || ""),
-          time: getField(row, "time", "Time"),
+          time: parseTime(row["time"] || row["Time"] || ""),
           home_team: getField(row, "home_team", "Home Team", "Home"),
           away_team: getField(row, "away_team", "Away Team", "Away"),
           location: getField(row, "location", "Location", "Venue"),
