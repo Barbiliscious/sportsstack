@@ -190,6 +190,7 @@ const AppLayout = () => {
   const handleAssociationChange = (associationId: string) => {
     setSelectedAssociationId(associationId);
     setIsAssociationPopoverOpen(false);
+    navigate("/admin/associations");
   };
 
   const navItems = NAV_SETS[mode];
