@@ -86,6 +86,7 @@ const App = () => (
                       <Route path="/admin/bulk-import" element={<BulkImport />} />
                       <Route path="/admin/fixtures" element={<FixturesManagement />} />
                       <Route path="/admin/fixture-import" element={<FixtureImport />} />
+                      <Route path="/admin/requests" element={<Requests />} />
                     </Route>
                   </Route>
 
