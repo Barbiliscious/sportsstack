@@ -269,8 +269,9 @@ const TeamsManagement = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
+                 <TableHead>Name</TableHead>
                   <TableHead>Club</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Age Group</TableHead>
                   <TableHead>Division</TableHead>
                   <TableHead>Gender</TableHead>
