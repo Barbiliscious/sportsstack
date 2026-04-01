@@ -106,6 +106,7 @@ const FixtureImport = () => {
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<ParsedFixture[]>([]);
   const [importDone, setImportDone] = useState(false);
+  const [correctionDialog, setCorrectionDialog] = useState<{ originalName: string; validTeams: string[] } | null>(null);
 
   const [associations, setAssociations] = useState<{ id: string; name: string }[]>([]);
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
