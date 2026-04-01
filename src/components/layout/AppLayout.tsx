@@ -408,7 +408,10 @@ const AppLayout = () => {
 
             {/* Division Selector */}
             {selectedClubId && filteredDivisions.length > 0 && (
-              <Select value={selectedDivision || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedDivision("") : setSelectedDivision(v)}>
+              <Select value={selectedDivision || undefined} onValueChange={(v) => {
+                if (v === "__clear__") { setSelectedDivision(""); }
+                else { setSelectedDivision(v); navigate("/admin/teams"); }
+              }}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Division" />
                 </SelectTrigger>
