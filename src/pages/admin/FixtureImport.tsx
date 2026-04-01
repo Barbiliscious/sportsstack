@@ -416,6 +416,55 @@ const FixtureImport = () => {
           {submitting ? "Importing..." : `Import ${validRows.length} Fixture(s)`}
         </Button>
       )}
+
+      {/* Correction Dialog */}
+      {correctionDialog && (
+        <AlertDialog open={!!correctionDialog} onOpenChange={(open) => !open && setCorrectionDialog(null)}>
+          <AlertDialogContent className="max-h-[80vh] overflow-y-auto">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Replace '{correctionDialog.originalName}'</AlertDialogTitle>
+              <AlertDialogDescription>Select the correct team name. "Change All" will replace every instance in the import.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-1 max-h-60 overflow-y-auto border rounded-md p-2">
+              {correctionDialog.validTeams.map((name) => (
+                <button
+                  key={name}
+                  className="w-full text-left px-3 py-2 rounded hover:bg-muted text-sm capitalize"
+                  onClick={() => {
+                    const original = correctionDialog.originalName.toLowerCase().trim();
+                    const replacement = name;
+                    setRows((prev) => {
+                      const updated = prev.map((r) => ({
+                        ...r,
+                        home_team: r.home_team.toLowerCase().trim() === original ? teamNameLookup.get(replacement)?.club_name ? replacement : r.home_team : r.home_team,
+                        away_team: r.away_team.toLowerCase().trim() === original ? teamNameLookup.get(replacement)?.club_name ? replacement : r.away_team : r.away_team,
+                      }));
+                      // Re-apply team name with proper casing from lookup
+                      const fixedRows = updated.map((r) => ({
+                        ...r,
+                        home_team: r.home_team.toLowerCase().trim() === original
+                          ? (Array.from(teamNameLookup.entries()).find(([k]) => k === replacement)?.[1] ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.home_team)
+                          : r.home_team,
+                        away_team: r.away_team.toLowerCase().trim() === original
+                          ? (Array.from(teamNameLookup.entries()).find(([k]) => k === replacement)?.[1] ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.away_team)
+                          : r.away_team,
+                      }));
+                      return validate(fixedRows.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest));
+                    });
+                    setCorrectionDialog(null);
+                    toast({ title: "Replaced", description: `All instances of '${correctionDialog.originalName}' updated.` });
+                  }}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 };
