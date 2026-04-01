@@ -223,8 +223,9 @@ const FixtureImport = () => {
     setSubmitting(true);
 
     const inserts = validRows.map((r) => {
+      const time24 = timeDisplayTo24h(r.time);
       let gameDate = r.date;
-      if (r.time) gameDate += `T${r.time}:00`;
+      if (time24) gameDate += `T${time24}:00`;
       else gameDate += "T00:00:00";
 
       return {
