@@ -248,7 +248,7 @@ const FixturesManagement = () => {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {games.length} Fixture{games.length !== 1 ? "s" : ""}
+              {displayGames.length} Fixture{displayGames.length !== 1 ? "s" : ""}
             </CardTitle>
           </CardHeader>
           <CardContent>
