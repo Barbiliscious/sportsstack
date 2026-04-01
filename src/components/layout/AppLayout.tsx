@@ -386,7 +386,10 @@ const AppLayout = () => {
 
             {/* Club Selector */}
             {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
-              <Select value={selectedClubId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedClubId("") : setSelectedClubId(v)}>
+              <Select value={selectedClubId || undefined} onValueChange={(v) => {
+                if (v === "__clear__") { setSelectedClubId(""); }
+                else { setSelectedClubId(v); navigate("/admin/clubs"); }
+              }}>
                 <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
                 </SelectTrigger>
