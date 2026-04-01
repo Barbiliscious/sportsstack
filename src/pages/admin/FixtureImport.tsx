@@ -362,12 +362,32 @@ const FixtureImport = () => {
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
                         ) : (
                           <div className="space-y-0.5">
-                            {r.errors.map((err, i) => (
-                              <div key={i} className="flex items-start gap-1">
-                                <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
-                                <span className="text-xs text-destructive">{err}</span>
-                              </div>
-                            ))}
+                            {r.errors.map((err, i) => {
+                              const teamNotFoundMatch = err.match(/Neither '(.+?)' nor '(.+?)' found/);
+                              if (teamNotFoundMatch) {
+                                return (
+                                  <div key={i} className="flex items-start gap-1 flex-wrap">
+                                    <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                                    <span className="text-xs text-destructive">
+                                      Team not found:{" "}
+                                      <button className="underline text-primary font-medium" onClick={() => setCorrectionDialog({ originalName: teamNotFoundMatch[1], validTeams: Array.from(teamNameLookup.keys()) })}>
+                                        {teamNotFoundMatch[1]}
+                                      </button>
+                                      {" / "}
+                                      <button className="underline text-primary font-medium" onClick={() => setCorrectionDialog({ originalName: teamNotFoundMatch[2], validTeams: Array.from(teamNameLookup.keys()) })}>
+                                        {teamNotFoundMatch[2]}
+                                      </button>
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div key={i} className="flex items-start gap-1">
+                                  <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                                  <span className="text-xs text-destructive">{err}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </TableCell>
