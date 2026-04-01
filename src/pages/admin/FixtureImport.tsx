@@ -68,6 +68,35 @@ function getField(row: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
+function parseTime(val: unknown): string {
+  if (!val) return "";
+  const num = Number(val);
+  if (!isNaN(num) && num >= 0 && num < 1) {
+    const totalMinutes = Math.round(num * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const period = hours >= 12 ? "PM" : "AM";
+    const h12 = hours % 12 || 12;
+    return `${h12}:${String(minutes).padStart(2, "0")} ${period}`;
+  }
+  return String(val).trim();
+}
+
+function timeDisplayTo24h(display: string): string {
+  if (!display) return "";
+  const match = display.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (match) {
+    let h = parseInt(match[1]);
+    const m = match[2];
+    const period = match[3].toUpperCase();
+    if (period === "PM" && h !== 12) h += 12;
+    if (period === "AM" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${m}`;
+  }
+  if (/^\d{1,2}:\d{2}$/.test(display)) return display;
+  return "";
+}
+
 const FixtureImport = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
