@@ -283,6 +283,7 @@ const TeamsManagement = () => {
                   <TableRow key={team.id}>
                     <TableCell className="font-medium">{getTeamDisplayName(team)}</TableCell>
                     <TableCell>{team.clubs?.name || "-"}</TableCell>
+                    <TableCell>{(team as any).team_type || "-"}</TableCell>
                     <TableCell>{team.age_group || "-"}</TableCell>
                     <TableCell>{team.division || "-"}</TableCell>
                     <TableCell>{team.gender || "-"}</TableCell>
