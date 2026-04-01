@@ -230,8 +230,12 @@ const FixturesManagement = () => {
           <Input className="w-20 h-9" type="number" placeholder="All" value={filterRound} onChange={(e) => setFilterRound(e.target.value)} />
         </div>
       </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
-      ) : games.length === 0 ? (
+      ) : displayGames.length === 0 ? (
         <Card variant="ghost" className="text-center py-12">
           <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <p className="text-muted-foreground">
