@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -48,6 +49,10 @@ const FixturesManagement = () => {
   const [editForm, setEditForm] = useState<Partial<GameWithTeam>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ team_id: "", opponent_name: "", game_date: "", game_time: "", location: "", round_number: "", status: "scheduled" });
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterRound, setFilterRound] = useState("");
 
   const teamIds = selectedTeamId
     ? [selectedTeamId]
@@ -151,6 +156,33 @@ const FixturesManagement = () => {
     setDeleteTarget(null);
   };
 
+  const handleAddFixture = async () => {
+    if (!addForm.team_id || !addForm.opponent_name || !addForm.game_date) {
+      toast({ title: "Error", description: "Team, opponent and date are required.", variant: "destructive" });
+      return;
+    }
+    const gameDate = addForm.game_time ? `${addForm.game_date}T${addForm.game_time}:00` : `${addForm.game_date}T00:00:00`;
+    const { error } = await supabase.from("games").insert({
+      team_id: addForm.team_id,
+      opponent_name: addForm.opponent_name,
+      game_date: gameDate,
+      is_home: true,
+      location: addForm.location || null,
+      round_number: addForm.round_number ? parseInt(addForm.round_number) : null,
+      status: addForm.status,
+    });
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Created", description: "Fixture added." });
+    setAddDialogOpen(false);
+    setAddForm({ team_id: "", opponent_name: "", game_date: "", game_time: "", location: "", round_number: "", status: "scheduled" });
+    fetchGames();
+  };
+
+  // Filter games
+  let displayGames = games;
+  if (filterStatus !== "all") displayGames = displayGames.filter((g) => g.status === filterStatus);
+  if (filterRound) displayGames = displayGames.filter((g) => g.round_number !== null && String(g.round_number) === filterRound);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -171,6 +203,31 @@ const FixturesManagement = () => {
             <Download className="h-4 w-4" />
             Export ({games.length})
           </Button>
+          <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label>Status:</Label>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="postponed">Postponed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label>Round:</Label>
+          <Input className="w-20 h-9" type="number" placeholder="All" value={filterRound} onChange={(e) => setFilterRound(e.target.value)} />
         </div>
       </div>
 
@@ -178,7 +235,7 @@ const FixturesManagement = () => {
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
-      ) : games.length === 0 ? (
+      ) : displayGames.length === 0 ? (
         <Card variant="ghost" className="text-center py-12">
           <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <p className="text-muted-foreground">
@@ -191,7 +248,7 @@ const FixturesManagement = () => {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {games.length} Fixture{games.length !== 1 ? "s" : ""}
+              {displayGames.length} Fixture{displayGames.length !== 1 ? "s" : ""}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -211,7 +268,7 @@ const FixturesManagement = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {games.map((g) => {
+                  {displayGames.map((g) => {
                     const d = new Date(g.game_date);
                     const team = teamMap.get(g.team_id);
                     const isEditing = editingId === g.id;
@@ -308,6 +365,57 @@ const FixturesManagement = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Fixture Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Fixture</DialogTitle>
+            <DialogDescription>Manually create a single fixture.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Team *</Label>
+              <Select value={addForm.team_id} onValueChange={(v) => setAddForm((p) => ({ ...p, team_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
+                <SelectContent>
+                  {teams.filter((t) => teamIds.includes(t.id)).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{getTeamDisplayName(t)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Opponent *</Label>
+              <Input value={addForm.opponent_name} onChange={(e) => setAddForm((p) => ({ ...p, opponent_name: e.target.value }))} placeholder="Opponent name" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Input type="date" value={addForm.game_date} onChange={(e) => setAddForm((p) => ({ ...p, game_date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Time</Label>
+                <Input type="time" value={addForm.game_time} onChange={(e) => setAddForm((p) => ({ ...p, game_time: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Input value={addForm.location} onChange={(e) => setAddForm((p) => ({ ...p, location: e.target.value }))} placeholder="Ground name" />
+              </div>
+              <div className="space-y-2">
+                <Label>Round</Label>
+                <Input type="number" value={addForm.round_number} onChange={(e) => setAddForm((p) => ({ ...p, round_number: e.target.value }))} placeholder="#" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddFixture}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

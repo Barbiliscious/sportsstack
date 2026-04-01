@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +68,35 @@ function getField(row: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
+function parseTime(val: unknown): string {
+  if (!val) return "";
+  const num = Number(val);
+  if (!isNaN(num) && num >= 0 && num < 1) {
+    const totalMinutes = Math.round(num * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const period = hours >= 12 ? "PM" : "AM";
+    const h12 = hours % 12 || 12;
+    return `${h12}:${String(minutes).padStart(2, "0")} ${period}`;
+  }
+  return String(val).trim();
+}
+
+function timeDisplayTo24h(display: string): string {
+  if (!display) return "";
+  const match = display.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (match) {
+    let h = parseInt(match[1]);
+    const m = match[2];
+    const period = match[3].toUpperCase();
+    if (period === "PM" && h !== 12) h += 12;
+    if (period === "AM" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${m}`;
+  }
+  if (/^\d{1,2}:\d{2}$/.test(display)) return display;
+  return "";
+}
+
 const FixtureImport = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -74,6 +106,7 @@ const FixtureImport = () => {
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<ParsedFixture[]>([]);
   const [importDone, setImportDone] = useState(false);
+  const [correctionDialog, setCorrectionDialog] = useState<{ originalName: string; validTeams: string[] } | null>(null);
 
   const [associations, setAssociations] = useState<{ id: string; name: string }[]>([]);
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
@@ -161,7 +194,7 @@ const FixtureImport = () => {
           row_number: i + 2,
           round_number: getField(row, "round_number", "Round", "Rd"),
           date: parseDate(row["date"] || row["Date"] || row["game_date"] || ""),
-          time: getField(row, "time", "Time"),
+          time: parseTime(row["time"] || row["Time"] || ""),
           home_team: getField(row, "home_team", "Home Team", "Home"),
           away_team: getField(row, "away_team", "Away Team", "Away"),
           location: getField(row, "location", "Location", "Venue"),
@@ -191,8 +224,9 @@ const FixtureImport = () => {
     setSubmitting(true);
 
     const inserts = validRows.map((r) => {
+      const time24 = timeDisplayTo24h(r.time);
       let gameDate = r.date;
-      if (r.time) gameDate += `T${r.time}:00`;
+      if (time24) gameDate += `T${time24}:00`;
       else gameDate += "T00:00:00";
 
       return {
@@ -328,12 +362,32 @@ const FixtureImport = () => {
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
                         ) : (
                           <div className="space-y-0.5">
-                            {r.errors.map((err, i) => (
-                              <div key={i} className="flex items-start gap-1">
-                                <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
-                                <span className="text-xs text-destructive">{err}</span>
-                              </div>
-                            ))}
+                            {r.errors.map((err, i) => {
+                              const teamNotFoundMatch = err.match(/Neither '(.+?)' nor '(.+?)' found/);
+                              if (teamNotFoundMatch) {
+                                return (
+                                  <div key={i} className="flex items-start gap-1 flex-wrap">
+                                    <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                                    <span className="text-xs text-destructive">
+                                      Team not found:{" "}
+                                      <button className="underline text-primary font-medium" onClick={() => setCorrectionDialog({ originalName: teamNotFoundMatch[1], validTeams: Array.from(teamNameLookup.keys()) })}>
+                                        {teamNotFoundMatch[1]}
+                                      </button>
+                                      {" / "}
+                                      <button className="underline text-primary font-medium" onClick={() => setCorrectionDialog({ originalName: teamNotFoundMatch[2], validTeams: Array.from(teamNameLookup.keys()) })}>
+                                        {teamNotFoundMatch[2]}
+                                      </button>
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div key={i} className="flex items-start gap-1">
+                                  <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                                  <span className="text-xs text-destructive">{err}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </TableCell>
@@ -361,6 +415,55 @@ const FixtureImport = () => {
           {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
           {submitting ? "Importing..." : `Import ${validRows.length} Fixture(s)`}
         </Button>
+      )}
+
+      {/* Correction Dialog */}
+      {correctionDialog && (
+        <AlertDialog open={!!correctionDialog} onOpenChange={(open) => !open && setCorrectionDialog(null)}>
+          <AlertDialogContent className="max-h-[80vh] overflow-y-auto">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Replace '{correctionDialog.originalName}'</AlertDialogTitle>
+              <AlertDialogDescription>Select the correct team name. "Change All" will replace every instance in the import.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-1 max-h-60 overflow-y-auto border rounded-md p-2">
+              {correctionDialog.validTeams.map((name) => (
+                <button
+                  key={name}
+                  className="w-full text-left px-3 py-2 rounded hover:bg-muted text-sm capitalize"
+                  onClick={() => {
+                    const original = correctionDialog.originalName.toLowerCase().trim();
+                    const replacement = name;
+                    setRows((prev) => {
+                      const updated = prev.map((r) => ({
+                        ...r,
+                        home_team: r.home_team.toLowerCase().trim() === original ? teamNameLookup.get(replacement)?.club_name ? replacement : r.home_team : r.home_team,
+                        away_team: r.away_team.toLowerCase().trim() === original ? teamNameLookup.get(replacement)?.club_name ? replacement : r.away_team : r.away_team,
+                      }));
+                      // Re-apply team name with proper casing from lookup
+                      const fixedRows = updated.map((r) => ({
+                        ...r,
+                        home_team: r.home_team.toLowerCase().trim() === original
+                          ? (Array.from(teamNameLookup.entries()).find(([k]) => k === replacement)?.[1] ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.home_team)
+                          : r.home_team,
+                        away_team: r.away_team.toLowerCase().trim() === original
+                          ? (Array.from(teamNameLookup.entries()).find(([k]) => k === replacement)?.[1] ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.away_team)
+                          : r.away_team,
+                      }));
+                      return validate(fixedRows.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest));
+                    });
+                    setCorrectionDialog(null);
+                    toast({ title: "Replaced", description: `All instances of '${correctionDialog.originalName}' updated.` });
+                  }}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

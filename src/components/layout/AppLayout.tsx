@@ -42,23 +42,28 @@ import { supabase } from "@/integrations/supabase/client";
 // Nav items per mode
 const NAV_SETS: Record<AppMode, { path: string; label: string; icon: typeof LayoutDashboard }[]> = {
   super_admin: [
+    { path: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { path: "/admin/associations", label: "Associations", icon: Globe },
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
+    { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
   association: [
+    { path: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
+    { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
   club: [
+    { path: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
-    { path: "/admin", label: "Club Settings", icon: Settings },
+    { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
   team: [
     { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -127,6 +132,7 @@ const AppLayout = () => {
   const [isAssociationPopoverOpen, setIsAssociationPopoverOpen] = useState(false);
   const [isModeSwitcherOpen, setIsModeSwitcherOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("U");
 
@@ -143,6 +149,21 @@ const AppLayout = () => {
       setNotifications(data || []);
     };
     fetchNotifications();
+  }, [user]);
+
+  // Fetch pending request count for admin badge
+  useEffect(() => {
+    if (!user) return;
+    const isAdmin = mode === "super_admin" || mode === "association" || mode === "club";
+    if (!isAdmin) { setPendingRequestCount(0); return; }
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("primary_change_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "PENDING");
+      setPendingRequestCount(count || 0);
+    };
+    fetchCount();
   }, [user]);
 
   // Fetch user avatar
@@ -169,6 +190,7 @@ const AppLayout = () => {
   const handleAssociationChange = (associationId: string) => {
     setSelectedAssociationId(associationId);
     setIsAssociationPopoverOpen(false);
+    navigate("/admin/associations");
   };
 
   const navItems = NAV_SETS[mode];
@@ -196,9 +218,13 @@ const AppLayout = () => {
       <nav className="flex-1 py-2">
         {navItems.map((item) => {
           const isActive =
-            location.pathname === item.path ||
-            (item.path === "/games" && location.pathname.startsWith("/games"));
+            (item.path === "/admin" && location.pathname === "/admin") ||
+            (item.path !== "/admin" && (
+              location.pathname === item.path ||
+              (item.path === "/games" && location.pathname.startsWith("/games"))
+            ));
           const Icon = item.icon;
+          const isRequestsItem = item.path === "/admin/requests";
           return (
             <Link
               key={item.path}
@@ -215,6 +241,11 @@ const AppLayout = () => {
               >
                 <Icon className="h-5 w-5" />
                 {item.label}
+                {isRequestsItem && pendingRequestCount > 0 && (
+                  <Badge className="ml-auto h-5 min-w-[20px] px-1.5 text-xs bg-destructive text-destructive-foreground">
+                    {pendingRequestCount}
+                  </Badge>
+                )}
               </div>
             </Link>
           );
@@ -355,7 +386,10 @@ const AppLayout = () => {
 
             {/* Club Selector */}
             {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
-              <Select value={selectedClubId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedClubId("") : setSelectedClubId(v)}>
+              <Select value={selectedClubId || undefined} onValueChange={(v) => {
+                if (v === "__clear__") { setSelectedClubId(""); }
+                else { setSelectedClubId(v); navigate("/admin/clubs"); }
+              }}>
                 <SelectTrigger className="w-[140px] lg:w-[180px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Club" />
                 </SelectTrigger>
@@ -374,7 +408,10 @@ const AppLayout = () => {
 
             {/* Division Selector */}
             {selectedClubId && filteredDivisions.length > 0 && (
-              <Select value={selectedDivision || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedDivision("") : setSelectedDivision(v)}>
+              <Select value={selectedDivision || undefined} onValueChange={(v) => {
+                if (v === "__clear__") { setSelectedDivision(""); }
+                else { setSelectedDivision(v); navigate("/admin/teams"); }
+              }}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Division" />
                 </SelectTrigger>
