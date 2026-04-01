@@ -47,7 +47,7 @@ const TeamsManagement = () => {
   const [editingTeam, setEditingTeam] = useState<TeamWithClub | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState<TeamWithClub | null>(null);
-  const [formData, setFormData] = useState({ name: "", club_id: "", age_group: "", division: "", gender: "" });
+  const [formData, setFormData] = useState({ name: "", club_id: "", age_group: "", division: "", gender: "", team_type: "" });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
