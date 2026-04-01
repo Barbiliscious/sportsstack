@@ -156,6 +156,33 @@ const FixturesManagement = () => {
     setDeleteTarget(null);
   };
 
+  const handleAddFixture = async () => {
+    if (!addForm.team_id || !addForm.opponent_name || !addForm.game_date) {
+      toast({ title: "Error", description: "Team, opponent and date are required.", variant: "destructive" });
+      return;
+    }
+    const gameDate = addForm.game_time ? `${addForm.game_date}T${addForm.game_time}:00` : `${addForm.game_date}T00:00:00`;
+    const { error } = await supabase.from("games").insert({
+      team_id: addForm.team_id,
+      opponent_name: addForm.opponent_name,
+      game_date: gameDate,
+      is_home: true,
+      location: addForm.location || null,
+      round_number: addForm.round_number ? parseInt(addForm.round_number) : null,
+      status: addForm.status,
+    });
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Created", description: "Fixture added." });
+    setAddDialogOpen(false);
+    setAddForm({ team_id: "", opponent_name: "", game_date: "", game_time: "", location: "", round_number: "", status: "scheduled" });
+    fetchGames();
+  };
+
+  // Filter games
+  let displayGames = games;
+  if (filterStatus !== "all") displayGames = displayGames.filter((g) => g.status === filterStatus);
+  if (filterRound) displayGames = displayGames.filter((g) => g.round_number !== null && String(g.round_number) === filterRound);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
