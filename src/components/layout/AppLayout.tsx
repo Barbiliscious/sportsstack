@@ -132,6 +132,7 @@ const AppLayout = () => {
   const [isAssociationPopoverOpen, setIsAssociationPopoverOpen] = useState(false);
   const [isModeSwitcherOpen, setIsModeSwitcherOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("U");
 
