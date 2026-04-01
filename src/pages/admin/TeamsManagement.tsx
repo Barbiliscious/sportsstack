@@ -176,8 +176,20 @@ const TeamsManagement = () => {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Name (auto-generated)</Label>
-                  <Input value={formData.division && formData.gender ? `${formData.division} ${formData.gender}` : formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Set division & gender" disabled={!!(formData.division && formData.gender)} />
+                  <Label>Name</Label>
+                  <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Team name" />
+                  {!editingTeam && <p className="text-xs text-muted-foreground">Tip: Rename this team after saving.</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Team Type</Label>
+                  <Select value={formData.team_type} onValueChange={(v) => setFormData({ ...formData, team_type: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Senior">Senior</SelectItem>
+                      <SelectItem value="Junior">Junior</SelectItem>
+                      <SelectItem value="Masters">Masters</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
