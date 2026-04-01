@@ -103,10 +103,12 @@ const TeamsManagement = () => {
   const handleOpenDialog = (team?: TeamWithClub) => {
     if (team) {
       setEditingTeam(team);
-      setFormData({ name: team.name, club_id: team.club_id, age_group: team.age_group || "", division: team.division || "", gender: team.gender || "" });
+      setFormData({ name: team.name, club_id: team.club_id, age_group: team.age_group || "", division: team.division || "", gender: team.gender || "", team_type: (team as any).team_type || "" });
     } else {
       setEditingTeam(null);
-      setFormData({ name: "", club_id: formClubs.length === 1 ? formClubs[0].id : "", age_group: "", division: "", gender: "" });
+      const defaultClubId = formClubs.length === 1 ? formClubs[0].id : "";
+      const defaultName = defaultClubId ? formClubs.find(c => c.id === defaultClubId)?.name || "" : "";
+      setFormData({ name: defaultName, club_id: defaultClubId, age_group: "", division: "", gender: "", team_type: "" });
     }
     setDialogOpen(true);
   };
