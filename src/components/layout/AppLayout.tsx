@@ -151,6 +151,21 @@ const AppLayout = () => {
     fetchNotifications();
   }, [user]);
 
+  // Fetch pending request count for admin badge
+  useEffect(() => {
+    if (!user) return;
+    const isAdmin = mode === "super_admin" || mode === "association" || mode === "club";
+    if (!isAdmin) { setPendingRequestCount(0); return; }
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("primary_change_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "PENDING");
+      setPendingRequestCount(count || 0);
+    };
+    fetchCount();
+  }, [user]);
+
   // Fetch user avatar
   useEffect(() => {
     if (!user) return;
