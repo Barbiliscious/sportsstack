@@ -42,23 +42,28 @@ import { supabase } from "@/integrations/supabase/client";
 // Nav items per mode
 const NAV_SETS: Record<AppMode, { path: string; label: string; icon: typeof LayoutDashboard }[]> = {
   super_admin: [
+    { path: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { path: "/admin/associations", label: "Associations", icon: Globe },
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
+    { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
   association: [
+    { path: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
+    { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
   club: [
+    { path: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
     { path: "/admin/users", label: "Users", icon: UserCog },
-    { path: "/admin", label: "Club Settings", icon: Settings },
+    { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
   team: [
     { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
