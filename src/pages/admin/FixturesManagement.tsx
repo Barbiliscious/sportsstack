@@ -268,7 +268,7 @@ const FixturesManagement = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {games.map((g) => {
+                  {displayGames.map((g) => {
                     const d = new Date(g.game_date);
                     const team = teamMap.get(g.team_id);
                     const isEditing = editingId === g.id;
