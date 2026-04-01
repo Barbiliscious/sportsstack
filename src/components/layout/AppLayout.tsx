@@ -218,9 +218,13 @@ const AppLayout = () => {
       <nav className="flex-1 py-2">
         {navItems.map((item) => {
           const isActive =
-            location.pathname === item.path ||
-            (item.path === "/games" && location.pathname.startsWith("/games"));
+            (item.path === "/admin" && location.pathname === "/admin") ||
+            (item.path !== "/admin" && (
+              location.pathname === item.path ||
+              (item.path === "/games" && location.pathname.startsWith("/games"))
+            ));
           const Icon = item.icon;
+          const isRequestsItem = item.path === "/admin/requests";
           return (
             <Link
               key={item.path}
@@ -237,6 +241,11 @@ const AppLayout = () => {
               >
                 <Icon className="h-5 w-5" />
                 {item.label}
+                {isRequestsItem && pendingRequestCount > 0 && (
+                  <Badge className="ml-auto h-5 min-w-[20px] px-1.5 text-xs bg-destructive text-destructive-foreground">
+                    {pendingRequestCount}
+                  </Badge>
+                )}
               </div>
             </Link>
           );
