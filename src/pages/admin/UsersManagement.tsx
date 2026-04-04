@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -20,7 +21,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
-import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download, RefreshCw } from "lucide-react";
+import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download, RefreshCw, Plus } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +31,7 @@ import { getRoleDisplayName, getRoleBadgeColor } from "@/hooks/useUserRole";
 import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
+type MembershipType = Database["public"]["Enums"]["membership_type"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 interface Membership {
@@ -45,7 +47,21 @@ interface UserWithRoles extends Profile {
   memberships: Membership[];
 }
 
+interface RoleWithScope {
+  role: AppRole;
+  association_id: string | null;
+  club_id: string | null;
+  team_id: string | null;
+}
+
 const ALL_ROLES: AppRole[] = ["PLAYER", "COACH", "TEAM_MANAGER", "CLUB_ADMIN", "ASSOCIATION_ADMIN", "SUPER_ADMIN"];
+
+const ROLES_NEEDING_SCOPE: Record<string, string> = {
+  ASSOCIATION_ADMIN: "association",
+  CLUB_ADMIN: "club",
+  TEAM_MANAGER: "team",
+  COACH: "team",
+};
 
 const UsersManagement = () => {
   const navigate = useNavigate();
@@ -64,9 +80,18 @@ const UsersManagement = () => {
   const [clubFilter, setClubFilter] = useState<string>("all");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
-  const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
+  const [selectedRoleScopes, setSelectedRoleScopes] = useState<RoleWithScope[]>([]);
   const [saving, setSaving] = useState(false);
   const [primaryRequests, setPrimaryRequests] = useState<any[]>([]);
+
+  // Team assignment state
+  const [showTeamAssign, setShowTeamAssign] = useState(false);
+  const [assignAssociationId, setAssignAssociationId] = useState("");
+  const [assignClubId, setAssignClubId] = useState("");
+  const [assignTeamId, setAssignTeamId] = useState("");
+  const [assignMembershipType, setAssignMembershipType] = useState<MembershipType>("PRIMARY");
+  const [assignSaving, setAssignSaving] = useState(false);
+
   useEffect(() => {
     if (!scopeLoading && !isAnyAdmin) {
       navigate("/dashboard");
@@ -76,7 +101,6 @@ const UsersManagement = () => {
   const fetchUsers = async () => {
     setLoading(true);
 
-    // Fetch reference data
     const [teamsRes, clubsRes, assocRes] = await Promise.all([
       supabase.from("teams").select("id, name, club_id, division"),
       supabase.from("clubs").select("id, name, association_id"),
@@ -89,7 +113,6 @@ const UsersManagement = () => {
     const teamsList = teamsRes.data || [];
     const teamsToShow = isSuperAdmin ? teamsList.map((t) => t.id) : scopedTeamIds;
 
-    // Fetch memberships for scoped teams
     let membershipsData: any[] = [];
     if (isSuperAdmin) {
       const { data } = await supabase.from("team_memberships").select("id, user_id, team_id, status, membership_type");
@@ -99,10 +122,8 @@ const UsersManagement = () => {
       membershipsData = data || [];
     }
 
-    // Get unique user IDs from memberships
     const memberUserIds = [...new Set(membershipsData.map((m) => m.user_id))];
 
-    // Fetch profiles
     let profiles: Profile[] = [];
     if (isSuperAdmin) {
       const { data } = await supabase.from("profiles").select("*").order("first_name");
@@ -112,10 +133,8 @@ const UsersManagement = () => {
       profiles = data || [];
     }
 
-    // Fetch roles
     const { data: userRoles } = await supabase.from("user_roles").select("user_id, role");
 
-    // Build user list
     const usersWithRoles: UserWithRoles[] = profiles.map((profile) => ({
       ...profile,
       roles: (userRoles || []).filter((r) => r.user_id === profile.id).map((r) => r.role),
@@ -142,7 +161,6 @@ const UsersManagement = () => {
       .order("requested_at", { ascending: false });
     
     if (data && data.length > 0) {
-      // Fetch team names and user profiles
       const teamIds = [...new Set([...data.map((r: any) => r.to_team_id), ...data.filter((r: any) => r.from_team_id).map((r: any) => r.from_team_id)])];
       const userIds = [...new Set(data.map((r: any) => r.user_id))];
       
@@ -172,7 +190,6 @@ const UsersManagement = () => {
     }
   }, [scopeLoading, isAnyAdmin, isSuperAdmin, scopedTeamIds]);
 
-  // Filter users
   const filteredUsers = users.filter((user) => {
     const fullName = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
     if (!fullName.includes(searchQuery.toLowerCase())) return false;
@@ -199,7 +216,6 @@ const UsersManagement = () => {
     return true;
   });
 
-  // Available associations and clubs for filter dropdowns (scoped)
   const availableAssociations = isSuperAdmin
     ? associations
     : associations.filter((a) => scopedAssociationIds.includes(a.id));
@@ -219,15 +235,13 @@ const UsersManagement = () => {
       const primaryMembership = user.memberships[0];
       const team = primaryMembership ? teams.find((t) => t.id === primaryMembership.team_id) : undefined;
       const club = team ? clubs.find((c) => c.id === team.club_id) : undefined;
-
-      // Look up team details for division
       const fullTeam = team ? teams.find((t) => t.id === team.id) : undefined;
 
       return {
         "Registration #": index + 1,
         "First Name": user.first_name || "",
         "Last Name": user.last_name || "",
-        "Email": "", // Email not in profiles table
+        "Email": "",
         "Gender": user.gender || "",
         "Date of Birth": user.date_of_birth || "",
         "Hockey Vic Number": user.hockey_vic_number || "",
@@ -292,31 +306,69 @@ const UsersManagement = () => {
     }
   };
 
-  const handleOpenRoleDialog = (user: UserWithRoles) => {
-    setSelectedUser(user);
-    setSelectedRoles([...user.roles]);
+  // --- Role dialog with scoped selectors ---
+
+  const handleOpenRoleDialog = async (u: UserWithRoles) => {
+    setSelectedUser(u);
+    // Fetch current roles with scope
+    const { data: rolesData } = await supabase
+      .from("user_roles")
+      .select("role, association_id, club_id, team_id")
+      .eq("user_id", u.id);
+
+    setSelectedRoleScopes(
+      (rolesData || []).map((r) => ({
+        role: r.role,
+        association_id: r.association_id,
+        club_id: r.club_id,
+        team_id: r.team_id,
+      }))
+    );
+    setShowTeamAssign(false);
+    setAssignAssociationId("");
+    setAssignClubId("");
+    setAssignTeamId("");
+    setAssignMembershipType("PRIMARY");
     setRoleDialogOpen(true);
   };
 
   const handleToggleRole = (role: AppRole) => {
-    setSelectedRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    setSelectedRoleScopes((prev) => {
+      const exists = prev.find((r) => r.role === role);
+      if (exists) {
+        return prev.filter((r) => r.role !== role);
+      }
+      return [...prev, { role, association_id: null, club_id: null, team_id: null }];
+    });
+  };
+
+  const handleRoleScopeChange = (role: AppRole, field: "association_id" | "club_id" | "team_id", value: string) => {
+    setSelectedRoleScopes((prev) =>
+      prev.map((r) => {
+        if (r.role !== role) return r;
+        const updated = { ...r, [field]: value || null };
+        // Clear child fields when parent changes
+        if (field === "association_id") {
+          updated.club_id = null;
+          updated.team_id = null;
+        }
+        if (field === "club_id") {
+          updated.team_id = null;
+        }
+        return updated;
+      })
     );
   };
 
-  // Determine which roles the current admin can assign
   const canAssignRole = (role: AppRole): boolean => {
     if (isSuperAdmin) return true;
     if (role === "SUPER_ADMIN") return false;
     if (scopedAssociationIds.length > 0) {
-      // Association admin can assign up to CLUB_ADMIN
       return ["PLAYER", "COACH", "TEAM_MANAGER", "CLUB_ADMIN"].includes(role);
     }
     if (scopedClubIds.length > 0) {
-      // Club admin can assign up to TEAM_MANAGER
       return ["PLAYER", "COACH", "TEAM_MANAGER"].includes(role);
     }
-    // Team manager/coach - no role assignment
     return false;
   };
 
@@ -324,35 +376,26 @@ const UsersManagement = () => {
     if (!selectedUser) return;
     setSaving(true);
 
-    const currentRoles = selectedUser.roles;
-    const rolesToAdd = selectedRoles.filter((r) => !currentRoles.includes(r));
-    const rolesToRemove = currentRoles.filter((r) => !selectedRoles.includes(r));
-
-    for (const role of rolesToRemove) {
-      const { error } = await supabase.from("user_roles").delete().eq("user_id", selectedUser.id).eq("role", role);
-      if (error) {
-        toast({ title: "Error", description: `Failed to remove ${role}`, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
+    // Delete all existing roles for this user, then re-insert
+    const { error: delErr } = await supabase.from("user_roles").delete().eq("user_id", selectedUser.id);
+    if (delErr) {
+      toast({ title: "Error", description: "Failed to update roles", variant: "destructive" });
+      setSaving(false);
+      return;
     }
 
-    for (const role of rolesToAdd) {
-      // Build insert with scope
-      const insertData: any = { user_id: selectedUser.id, role };
-      if (role === "ASSOCIATION_ADMIN" && scopedAssociationIds.length > 0) {
-        insertData.association_id = scopedAssociationIds[0];
-      }
-      if (role === "CLUB_ADMIN" && scopedClubIds.length > 0) {
-        insertData.club_id = scopedClubIds[0];
-      }
-      if ((role === "TEAM_MANAGER" || role === "COACH") && scopedTeamIds.length > 0) {
-        insertData.team_id = scopedTeamIds[0];
-      }
+    if (selectedRoleScopes.length > 0) {
+      const inserts = selectedRoleScopes.map((rs) => ({
+        user_id: selectedUser.id,
+        role: rs.role,
+        association_id: rs.association_id,
+        club_id: rs.club_id,
+        team_id: rs.team_id,
+      }));
 
-      const { error } = await supabase.from("user_roles").insert(insertData);
-      if (error) {
-        toast({ title: "Error", description: `Failed to add ${role}`, variant: "destructive" });
+      const { error: insErr } = await supabase.from("user_roles").insert(inserts);
+      if (insErr) {
+        toast({ title: "Error", description: insErr.message, variant: "destructive" });
         setSaving(false);
         return;
       }
@@ -363,6 +406,48 @@ const UsersManagement = () => {
     fetchUsers();
     setSaving(false);
   };
+
+  const handleAssignTeam = async () => {
+    if (!selectedUser || !assignTeamId) return;
+    setAssignSaving(true);
+
+    const { error } = await supabase.from("team_memberships").insert({
+      user_id: selectedUser.id,
+      team_id: assignTeamId,
+      membership_type: assignMembershipType,
+      status: "APPROVED",
+      is_player: true,
+    });
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Team membership added" });
+      setShowTeamAssign(false);
+      setAssignTeamId("");
+      fetchUsers();
+    }
+    setAssignSaving(false);
+  };
+
+  // Helper: get clubs filtered by association for scope selectors
+  const getClubsForAssociation = (assocId: string | null) => {
+    if (!assocId) return clubs;
+    return clubs.filter((c) => c.association_id === assocId);
+  };
+
+  const getTeamsForClub = (clubId: string | null) => {
+    if (!clubId) return teams;
+    return teams.filter((t) => t.club_id === clubId);
+  };
+
+  // Assign team cascade helpers
+  const assignAvailableClubs = assignAssociationId
+    ? clubs.filter((c) => c.association_id === assignAssociationId)
+    : clubs;
+  const assignAvailableTeams = assignClubId
+    ? teams.filter((t) => t.club_id === assignClubId)
+    : [];
 
   if (scopeLoading) {
     return (
@@ -596,7 +681,7 @@ const UsersManagement = () => {
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" onClick={() => handleOpenRoleDialog(user)}>
                         <Shield className="mr-2 h-4 w-4" />
-                        Roles
+                        Roles & Teams
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -607,36 +692,243 @@ const UsersManagement = () => {
         </CardContent>
       </Card>
 
-      {/* Role Management Dialog */}
+      {/* Role Management Dialog with Scope Selectors + Team Assignment */}
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Manage Roles</DialogTitle>
+            <DialogTitle>Manage Roles & Teams</DialogTitle>
             <DialogDescription>
-              Update roles for {selectedUser?.first_name} {selectedUser?.last_name}
+              Update roles and team assignments for {selectedUser?.first_name} {selectedUser?.last_name}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+
+          {/* Roles Section */}
+          <div className="space-y-4 py-2">
+            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Roles</h4>
             {ALL_ROLES.map((role) => {
               const disabled = !canAssignRole(role);
+              const roleScope = selectedRoleScopes.find((r) => r.role === role);
+              const isChecked = !!roleScope;
+              const scopeType = ROLES_NEEDING_SCOPE[role];
+
               return (
-                <div key={role} className="flex items-center space-x-3">
-                  <Checkbox
-                    id={role}
-                    checked={selectedRoles.includes(role)}
-                    onCheckedChange={() => handleToggleRole(role)}
-                    disabled={disabled}
-                  />
-                  <Label htmlFor={role} className={`flex items-center gap-2 ${disabled ? "text-muted-foreground" : ""}`}>
-                    <Badge className={getRoleBadgeColor(role)} variant="secondary">
-                      {getRoleDisplayName(role)}
-                    </Badge>
-                    {disabled && <span className="text-xs">(insufficient permissions)</span>}
-                  </Label>
+                <div key={role} className="space-y-2">
+                  <div className="flex items-center space-x-3">
+                    <Checkbox
+                      id={role}
+                      checked={isChecked}
+                      onCheckedChange={() => handleToggleRole(role)}
+                      disabled={disabled}
+                    />
+                    <Label htmlFor={role} className={`flex items-center gap-2 ${disabled ? "text-muted-foreground" : ""}`}>
+                      <Badge className={getRoleBadgeColor(role)} variant="secondary">
+                        {getRoleDisplayName(role)}
+                      </Badge>
+                      {disabled && <span className="text-xs">(insufficient permissions)</span>}
+                    </Label>
+                  </div>
+
+                  {/* Scope selectors when role is checked */}
+                  {isChecked && scopeType && (
+                    <div className="ml-8 grid gap-2 sm:grid-cols-3 border-l-2 border-muted pl-4 py-2">
+                      {/* Association selector for association/club/team scoped roles */}
+                      {(scopeType === "association" || scopeType === "club" || scopeType === "team") && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Association</Label>
+                          <Select
+                            value={roleScope.association_id || ""}
+                            onValueChange={(v) => handleRoleScopeChange(role, "association_id", v)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {associations.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {/* Club selector for club/team scoped roles */}
+                      {(scopeType === "club" || scopeType === "team") && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Club</Label>
+                          <Select
+                            value={roleScope.club_id || ""}
+                            onValueChange={(v) => handleRoleScopeChange(role, "club_id", v)}
+                            disabled={!roleScope.association_id}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getClubsForAssociation(roleScope.association_id).map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {/* Team selector for team scoped roles */}
+                      {scopeType === "team" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Team</Label>
+                          <Select
+                            value={roleScope.team_id || ""}
+                            onValueChange={(v) => handleRoleScopeChange(role, "team_id", v)}
+                            disabled={!roleScope.club_id}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getTeamsForClub(roleScope.club_id).map((t) => (
+                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+
+          <Separator />
+
+          {/* Team Assignment Section */}
+          <div className="space-y-3 py-2">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Team Memberships</h4>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowTeamAssign(!showTeamAssign)}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Assign Team
+              </Button>
+            </div>
+
+            {/* Current memberships (read-only) */}
+            {selectedUser && selectedUser.memberships.length > 0 ? (
+              <div className="space-y-1">
+                {selectedUser.memberships.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 text-sm py-1">
+                    <Badge variant="outline" className="text-xs">{m.team_name || "Unknown"}</Badge>
+                    <span className="text-muted-foreground text-xs">{m.membership_type}</span>
+                    <Badge
+                      variant="secondary"
+                      className={
+                        m.status === "APPROVED"
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 text-xs"
+                          : m.status === "PENDING"
+                          ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 text-xs"
+                          : "text-xs"
+                      }
+                    >
+                      {m.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No team memberships</p>
+            )}
+
+            {/* Add team assignment form */}
+            {showTeamAssign && (
+              <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Association</Label>
+                    <Select
+                      value={assignAssociationId}
+                      onValueChange={(v) => {
+                        setAssignAssociationId(v);
+                        setAssignClubId("");
+                        setAssignTeamId("");
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select association" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {associations.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Club</Label>
+                    <Select
+                      value={assignClubId}
+                      onValueChange={(v) => {
+                        setAssignClubId(v);
+                        setAssignTeamId("");
+                      }}
+                      disabled={!assignAssociationId}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select club" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignAvailableClubs.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Team</Label>
+                    <Select
+                      value={assignTeamId}
+                      onValueChange={setAssignTeamId}
+                      disabled={!assignClubId}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select team" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignAvailableTeams.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Membership Type</Label>
+                    <Select
+                      value={assignMembershipType}
+                      onValueChange={(v) => setAssignMembershipType(v as MembershipType)}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PRIMARY">Primary</SelectItem>
+                        <SelectItem value="PERMANENT">Permanent</SelectItem>
+                        <SelectItem value="FILL_IN">Fill-in</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setShowTeamAssign(false)}>Cancel</Button>
+                  <Button size="sm" onClick={handleAssignTeam} disabled={!assignTeamId || assignSaving}>
+                    {assignSaving ? "Adding..." : "Add Membership"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveRoles} disabled={saving}>
