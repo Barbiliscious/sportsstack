@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Plus, Pencil, Trash2, Building2, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -288,7 +288,11 @@ const AssociationsManagement = () => {
               <TableBody>
                 {associations.map((association) => (
                   <TableRow key={association.id}>
-                    <TableCell className="font-medium">{association.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link to={`/associations/${association.id}`} className="hover:underline text-primary">
+                        {association.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>{association.abbreviation || "-"}</TableCell>
                     <TableCell>
                       {association.logo_url ? (

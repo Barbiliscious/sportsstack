@@ -16,7 +16,7 @@ import {
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Plus, Pencil, Trash2, Trophy, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -281,7 +281,11 @@ const TeamsManagement = () => {
               <TableBody>
                 {filteredTeams.map((team) => (
                   <TableRow key={team.id}>
-                    <TableCell className="font-medium">{getTeamDisplayName(team)}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link to={`/teams/${team.id}`} className="hover:underline text-primary">
+                        {getTeamDisplayName(team)}
+                      </Link>
+                    </TableCell>
                     <TableCell>{team.clubs?.name || "-"}</TableCell>
                     <TableCell>{(team as any).team_type || "-"}</TableCell>
                     <TableCell>{team.age_group || "-"}</TableCell>
