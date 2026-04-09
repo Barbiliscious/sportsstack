@@ -1,87 +1,73 @@
 
 
-# Entity Dashboards: Association, Club, and Team
+# Bulk Import: 5 Fixes
 
-## Overview
+## Fix 1 — Duplicate mock email clash
 
-Create three new dashboard pages — one each for Association, Club, and Team — accessible via URL params. Each shows a consistent layout: announcements feed placeholder, upcoming fixtures, and key stats (games played, goals scored, standings). Content is scoped to that specific entity.
+**Edge function** (`supabase/functions/bulk-import/index.ts`):
+- When `player.email` is null/empty, generate `firstname.lastname@grampianshockey.mock`
+- Query existing auth users to check if that email exists; if so, increment suffix (`firstname.lastname2@...`, `firstname.lastname3@...`) until unique
+- Remove the current "Email is required (skipped)" error on line 148-149
 
-## Routes
+**Frontend** (`BulkImport.tsx`):
+- Remove the "Email required" validation on line 189
+- Allow empty email rows to pass client-side validation
 
-| Route | Page |
-|-------|------|
-| `/associations/:id` | Association Dashboard |
-| `/clubs/:id` | Club Dashboard |
-| `/teams/:id` | Team Dashboard |
+## Fix 2 — Clear All Test Data
 
-All three sit inside the existing `ProtectedRoute` + `AppLayout` wrapper (any authenticated user can access them; data visibility is controlled by RLS on the underlying tables which already allow public SELECT on associations, clubs, teams, and games have team-member SELECT).
+**New edge function** (`supabase/functions/clear-test-data/index.ts`):
+1. Validate caller is SUPER_ADMIN via service role lookup
+2. Accept `association_id`
+3. Find all clubs → teams in that association
+4. Find all user IDs with memberships on those teams
+5. Delete in order: `user_roles` for those users + teams, `team_memberships` for those teams, `profiles` for those users, then delete auth users via `admin.deleteUser()`
+6. **Confirmed: profiles table records are deleted**, not just memberships and auth users
+7. Only delete users who have NO remaining memberships in other associations after removing the target association's memberships
+8. Return counts of deleted records
 
-## Access Control
+**Config** (`supabase/config.toml`): Add `[functions.clear-test-data] verify_jwt = false`
 
-No new RLS needed. Associations, clubs, and teams already have public SELECT. Games are visible to team members + admins. The dashboards query public entity data and aggregate game stats — all readable by authenticated users within their hierarchy. The announcements section will be a placeholder (no `posts` table exists yet).
+**Frontend** (`BulkImport.tsx`):
+- Add "Clear All Test Data" button visible only when `isSuperAdmin`
+- Show `AlertDialog` with association selector and confirmation text
+- Call the edge function on confirm, show toast with results
 
-## Shared Layout Component
+## Fix 3 — Keep failed rows after import
 
-Create `src/components/entity/EntityDashboard.tsx` — a reusable layout component that receives:
-- `entityName: string` (e.g. "Hockey Ballarat")
-- `entityType: "association" | "club" | "team"`
-- `logoUrl?: string`
-- `stats: { gamesPlayed, goalsScored }`
-- `upcomingGames: Game[]`
+**Frontend** (`BulkImport.tsx`):
+- After `handleSubmit` completes with results, match returned `errors` array back to preview rows by `row_number`
+- Remove successfully imported rows from `rows` state
+- Keep failed rows with their server-side error message appended to `errors`
+- Change the submit button condition (line 653) from `!importResult` to also show when failed rows remain, enabling re-submission
+- Reset `importResult` when user edits a failed row
 
-Layout (single column, responsive):
-1. **Header** — Entity name + logo + type badge
-2. **Stats row** — 3 cards: Games Played, Total Goals, Ladder Position (placeholder "—" until standings table is populated)
-3. **Announcements** — Card with "No announcements yet" placeholder (ready for a future `posts` table)
-4. **Upcoming Fixtures** — List of next 5 games with date, opponent, location, home/away badge
+## Fix 4 — Reference sheet in template
 
-## Page Files
+**Frontend** (`BulkImport.tsx` `downloadTemplate`):
+- After creating the "Players" sheet, add a second sheet "Allowed Values"
+- Columns: Gender, Position, Role, Is Primary Team, Club (dynamic from `assocClubs`), Division (dynamic from teams in selected association)
+- Each column header in row 1, valid values listed vertically below
 
-### `src/pages/AssociationDashboard.tsx`
-- Reads `:id` from URL params
-- Fetches association record
-- Fetches all clubs → all teams for that association → all games for those teams
-- Aggregates stats (games played = games with status "completed", goals = sum of home_score + away_score)
-- Passes data to `EntityDashboard`
+## Fix 5 — Roles restricted to Super Admin
 
-### `src/pages/ClubDashboard.tsx`
-- Reads `:id` from URL params
-- Fetches club record (with association name)
-- Fetches all teams for that club → all games for those teams
-- Aggregates stats
-- Passes data to `EntityDashboard`
+**Frontend** (`BulkImport.tsx`):
+- If `!isSuperAdmin`: remove "role" from template headers, hide Role column in preview table, strip `role` to null before submission
+- If `isSuperAdmin`: no change
 
-### `src/pages/TeamDashboard.tsx`
-- Reads `:id` from URL params
-- Fetches team record (with club name)
-- Fetches games for that team
-- Aggregates stats
-- Passes data to `EntityDashboard`
+**Edge function** (`supabase/functions/bulk-import/index.ts`):
+- Add `role` field to `PlayerRow` interface
+- When inserting `user_roles`: if caller is SUPER_ADMIN and `player.role` is a valid role string, use that role instead of hardcoded "PLAYER"
+- For non-SUPER_ADMIN callers, always use "PLAYER" regardless of input
+- Set appropriate scope on the role row: PLAYER/COACH/TEAM_MANAGER → `team_id`, CLUB_ADMIN → `club_id` (looked up from team), ASSOCIATION_ADMIN → `association_id`
 
-## Navigation Entry Points
-
-### Admin list pages (add clickable row links)
-- `AssociationsManagement.tsx` — association name in table becomes a `<Link to={/associations/${id}}>` 
-- `ClubsManagement.tsx` — club name becomes a `<Link to={/clubs/${id}}>`
-- `TeamsManagement.tsx` — team name becomes a `<Link to={/teams/${id}}>`
-
-These are minimal changes: wrap the name cell text in a Link with styling. No other changes to these pages.
-
-### Cascade bar
-The user mentioned "clicking the final selected item opens its dashboard." This requires adding click handlers to the cascade display labels. However, the user also said "Do not change the cascade bar behaviour." I will add navigation links only on the **entity name display** (the selected value text), not change any dropdown/select behaviour.
-
-## Files to Create/Modify
+## Files Changed
 
 | File | Action |
 |------|--------|
-| `src/components/entity/EntityDashboard.tsx` | **Create** — shared dashboard layout |
-| `src/pages/AssociationDashboard.tsx` | **Create** |
-| `src/pages/ClubDashboard.tsx` | **Create** |
-| `src/pages/TeamDashboard.tsx` | **Create** |
-| `src/App.tsx` | **Edit** — add 3 routes |
-| `src/pages/admin/AssociationsManagement.tsx` | **Edit** — wrap name cell in Link |
-| `src/pages/admin/ClubsManagement.tsx` | **Edit** — wrap name cell in Link |
-| `src/pages/admin/TeamsManagement.tsx` | **Edit** — wrap name cell in Link |
+| `src/pages/admin/BulkImport.tsx` | Edit — all 5 fixes (frontend) |
+| `supabase/functions/bulk-import/index.ts` | Edit — Fix 1, Fix 5 |
+| `supabase/functions/clear-test-data/index.ts` | Create — Fix 2 |
+| `supabase/config.toml` | Edit — add clear-test-data config |
 
-No database migrations needed. No new RLS policies needed.
+No database migrations needed.
 
