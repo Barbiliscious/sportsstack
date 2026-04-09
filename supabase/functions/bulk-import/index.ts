@@ -21,6 +21,7 @@ interface PlayerRow {
   team_id: string;
   row_number: number;
   is_primary_team: boolean;
+  role: string | null;
 }
 
 interface Payload {
@@ -28,7 +29,7 @@ interface Payload {
   players: PlayerRow[];
 }
 
-const ADMIN_ROLES = ["SUPER_ADMIN", "ASSOCIATION_ADMIN", "CLUB_ADMIN", "TEAM_MANAGER", "COACH"];
+const VALID_ROLES = ["PLAYER", "COACH", "TEAM_MANAGER", "CLUB_ADMIN", "ASSOCIATION_ADMIN"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -129,6 +130,71 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Pre-fetch all auth users for email lookup (to avoid repeated listUsers calls)
+    const allEmails = new Set<string>();
+    const { data: userList } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
+    const authUsers = userList?.users || [];
+    for (const u of authUsers) {
+      if (u.email) allEmails.add(u.email.toLowerCase());
+    }
+
+    // Helper: generate unique mock email
+    function generateMockEmail(firstName: string, lastName: string): string {
+      const base = `${firstName.toLowerCase().replace(/[^a-z]/g, "")}.${lastName.toLowerCase().replace(/[^a-z]/g, "")}`;
+      let candidate = `${base}@grampianshockey.mock`;
+      if (!allEmails.has(candidate)) {
+        allEmails.add(candidate);
+        return candidate;
+      }
+      let suffix = 2;
+      while (true) {
+        candidate = `${base}${suffix}@grampianshockey.mock`;
+        if (!allEmails.has(candidate)) {
+          allEmails.add(candidate);
+          return candidate;
+        }
+        suffix++;
+      }
+    }
+
+    // Helper: find existing user by email
+    function findUserByEmail(email: string): string | null {
+      const match = authUsers.find(
+        (u) => u.email?.toLowerCase() === email.toLowerCase()
+      );
+      return match ? match.id : null;
+    }
+
+    // Helper: determine role and scope for user_roles insert
+    async function getRoleInsertData(
+      player: PlayerRow,
+      callerIsSuperAdmin: boolean,
+      svcClient: any
+    ) {
+      let role = "PLAYER";
+      if (callerIsSuperAdmin && player.role && VALID_ROLES.includes(player.role.toUpperCase())) {
+        role = player.role.toUpperCase();
+      }
+
+      const scopeData: { role: string; team_id?: string; club_id?: string; association_id?: string } = { role };
+
+      if (role === "PLAYER" || role === "COACH" || role === "TEAM_MANAGER") {
+        scopeData.team_id = player.team_id;
+      } else if (role === "CLUB_ADMIN") {
+        // Look up club_id from team
+        const { data: team } = await svcClient
+          .from("teams")
+          .select("club_id")
+          .eq("id", player.team_id)
+          .maybeSingle();
+        scopeData.club_id = team?.club_id || null;
+      } else if (role === "ASSOCIATION_ADMIN") {
+        scopeData.association_id = payload.association_id;
+      }
+
+      return scopeData;
+    }
+
     // Process each player
     const created: number[] = [];
     const added: number[] = [];
@@ -144,40 +210,20 @@ Deno.serve(async (req) => {
           errors.push({ row: player.row_number, error: "No team resolved" });
           continue;
         }
-        if (!player.email) {
-          errors.push({ row: player.row_number, error: "Email is required (skipped)" });
-          continue;
-        }
+
+        // Fix 1: auto-generate mock email if none provided
+        const email = player.email?.trim()
+          ? player.email.trim()
+          : generateMockEmail(player.first_name, player.last_name);
 
         const isPrimary = player.is_primary_team !== false;
         const membershipType = isPrimary ? "PRIMARY" : "PERMANENT";
 
-        // Check if user already exists
-        const { data: existingUsers } = await serviceClient.auth.admin.listUsers({
-          page: 1,
-          perPage: 1,
-        });
-
-        // Search by email using a targeted approach
-        const { data: profileByEmail } = await serviceClient
-          .from("profiles")
-          .select("id")
-          .limit(1);
-
-        // Use getUserByEmail-style lookup via listUsers filter
-        let existingUserId: string | null = null;
-        const { data: userList } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
-        if (userList?.users) {
-          const match = userList.users.find(
-            (u) => u.email?.toLowerCase() === player.email!.toLowerCase()
-          );
-          if (match) existingUserId = match.id;
-        }
+        const existingUserId = findUserByEmail(email);
 
         if (existingUserId) {
-          // User exists — handle based on is_primary_team flag
+          // User exists
           if (isPrimary) {
-            // Check if they already have a PRIMARY membership for a team in this association
             const { data: existingMemberships } = await serviceClient
               .from("team_memberships")
               .select("id, team_id, membership_type")
@@ -186,7 +232,6 @@ Deno.serve(async (req) => {
               .eq("status", "APPROVED");
 
             if (existingMemberships && existingMemberships.length > 0) {
-              // Check if any of these primary memberships are in the same association
               const primaryTeamIds = existingMemberships.map((m) => m.team_id);
               const { data: primaryTeams } = await serviceClient
                 .from("teams")
@@ -214,7 +259,6 @@ Deno.serve(async (req) => {
               }
             }
 
-            // Add PRIMARY membership + update profile
             await serviceClient.from("profiles").update({
               first_name: player.first_name,
               last_name: player.last_name,
@@ -235,26 +279,25 @@ Deno.serve(async (req) => {
               status: "APPROVED",
             });
 
-            // Ensure PLAYER role exists
+            // Fix 5: role based on caller
+            const roleData = await getRoleInsertData(player, isSuperAdmin, serviceClient);
             const { data: existingRole } = await serviceClient
               .from("user_roles")
               .select("id")
               .eq("user_id", existingUserId)
-              .eq("role", "PLAYER")
-              .eq("team_id", player.team_id)
+              .eq("role", roleData.role)
+              .eq("team_id", roleData.team_id || "")
               .maybeSingle();
 
             if (!existingRole) {
               await serviceClient.from("user_roles").insert({
                 user_id: existingUserId,
-                role: "PLAYER",
-                team_id: player.team_id,
+                ...roleData,
               });
             }
 
             added.push(player.row_number);
           } else {
-            // Not primary — just add as additional team, don't update profile
             await serviceClient.from("team_memberships").insert({
               user_id: existingUserId,
               team_id: player.team_id,
@@ -262,19 +305,19 @@ Deno.serve(async (req) => {
               status: "APPROVED",
             });
 
+            const roleData = await getRoleInsertData(player, isSuperAdmin, serviceClient);
             const { data: existingRole } = await serviceClient
               .from("user_roles")
               .select("id")
               .eq("user_id", existingUserId)
-              .eq("role", "PLAYER")
-              .eq("team_id", player.team_id)
+              .eq("role", roleData.role)
+              .eq("team_id", roleData.team_id || "")
               .maybeSingle();
 
             if (!existingRole) {
               await serviceClient.from("user_roles").insert({
                 user_id: existingUserId,
-                role: "PLAYER",
-                team_id: player.team_id,
+                ...roleData,
               });
             }
 
@@ -283,7 +326,7 @@ Deno.serve(async (req) => {
         } else {
           // New user — invite by email
           const { data: newUser, error: createError } =
-            await serviceClient.auth.admin.inviteUserByEmail(player.email, {
+            await serviceClient.auth.admin.inviteUserByEmail(email, {
               data: { first_name: player.first_name, last_name: player.last_name },
             });
 
@@ -293,8 +336,10 @@ Deno.serve(async (req) => {
           }
 
           const userId = newUser.user.id;
+          // Track newly created user so subsequent rows can find them
+          authUsers.push({ id: userId, email } as any);
+          allEmails.add(email.toLowerCase());
 
-          // Update profile only if primary
           if (isPrimary) {
             await serviceClient.from("profiles").update({
               first_name: player.first_name,
@@ -317,10 +362,10 @@ Deno.serve(async (req) => {
             status: "APPROVED",
           });
 
+          const roleData = await getRoleInsertData(player, isSuperAdmin, serviceClient);
           await serviceClient.from("user_roles").insert({
             user_id: userId,
-            role: "PLAYER",
-            team_id: player.team_id,
+            ...roleData,
           });
 
           created.push(player.row_number);
