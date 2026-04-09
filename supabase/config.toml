@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.bulk-import]
 verify_jwt = false
+
+[functions.clear-test-data]
+verify_jwt = false
