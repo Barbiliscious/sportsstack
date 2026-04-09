@@ -334,8 +334,9 @@ const AppLayout = () => {
                     <p className="text-xs font-medium text-muted-foreground px-2 py-1">Select Association</p>
                     <button
                       onClick={() => {
-                        navigate(mode === "super_admin" || mode === "association" || mode === "club" ? "/admin" : "/dashboard");
+                        setSelectedAssociationId("");
                         setIsAssociationPopoverOpen(false);
+                        navigate(mode === "super_admin" || mode === "association" || mode === "club" ? "/admin" : "/dashboard");
                       }}
                       className="w-full flex items-center gap-3 px-2 py-2 rounded-lg text-left transition-colors hover:bg-muted text-foreground"
                     >
@@ -386,7 +387,7 @@ const AppLayout = () => {
 
             {/* Club Selector */}
             {showClubSelector && selectedAssociationId && filteredClubs.length > 0 && (
-              <Select value={selectedClubId || undefined} onValueChange={(v) => {
+              <Select key={selectedAssociationId} value={selectedClubId || undefined} onValueChange={(v) => {
                 if (v === "__clear__") { setSelectedClubId(""); }
                 else { setSelectedClubId(v); navigate("/admin/clubs"); }
               }}>
@@ -408,7 +409,7 @@ const AppLayout = () => {
 
             {/* Division Selector */}
             {selectedClubId && filteredDivisions.length > 0 && (
-              <Select value={selectedDivision || undefined} onValueChange={(v) => {
+              <Select key={selectedClubId} value={selectedDivision || undefined} onValueChange={(v) => {
                 if (v === "__clear__") { setSelectedDivision(""); }
                 else { setSelectedDivision(v); navigate("/admin/teams"); }
               }}>
@@ -430,7 +431,7 @@ const AppLayout = () => {
 
             {/* Team Selector */}
             {selectedClubId && (filteredDivisions.length === 0 || selectedDivision) && filteredTeams.length > 0 && (
-              <Select value={selectedTeamId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedTeamId("") : setSelectedTeamId(v)}>
+              <Select key={selectedClubId + selectedDivision} value={selectedTeamId || undefined} onValueChange={(v) => v === "__clear__" ? setSelectedTeamId("") : setSelectedTeamId(v)}>
                 <SelectTrigger className="w-[120px] lg:w-[160px] bg-accent text-accent-foreground border-0 font-medium">
                   <SelectValue placeholder="Select Team" />
                 </SelectTrigger>
