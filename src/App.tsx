@@ -32,6 +32,11 @@ import FixturesManagement from "./pages/admin/FixturesManagement";
 import FixtureImport from "./pages/admin/FixtureImport";
 import Requests from "./pages/admin/Requests";
 
+// Entity Dashboards
+import AssociationDashboard from "./pages/AssociationDashboard";
+import ClubDashboard from "./pages/ClubDashboard";
+import TeamDashboard from "./pages/TeamDashboard";
+
 // Layout
 import AppLayout from "./components/layout/AppLayout";
 
@@ -87,6 +92,11 @@ const App = () => (
                       <Route path="/admin/fixtures" element={<FixturesManagement />} />
                       <Route path="/admin/fixture-import" element={<FixtureImport />} />
                       <Route path="/admin/requests" element={<Requests />} />
+
+                      {/* Entity Dashboards */}
+                      <Route path="/associations/:id" element={<AssociationDashboard />} />
+                      <Route path="/clubs/:id" element={<ClubDashboard />} />
+                      <Route path="/teams/:id" element={<TeamDashboard />} />
                     </Route>
                   </Route>
 

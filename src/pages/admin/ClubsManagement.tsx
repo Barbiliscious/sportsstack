@@ -16,7 +16,7 @@ import {
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Plus, Pencil, Trash2, Shield, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -226,7 +226,11 @@ const ClubsManagement = () => {
               <TableBody>
                 {filteredClubs.map((club) => (
                   <TableRow key={club.id}>
-                    <TableCell className="font-medium">{club.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link to={`/clubs/${club.id}`} className="hover:underline text-primary">
+                        {club.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>{club.associations?.name || "-"}</TableCell>
                     <TableCell>{club.abbreviation || "-"}</TableCell>
                     <TableCell className="text-right">
