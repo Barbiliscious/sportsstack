@@ -1,73 +1,85 @@
 
 
-# Bulk Import: 5 Fixes
+# Bulk Import Improvements — 4 Fixes
 
-## Fix 1 — Duplicate mock email clash
+## Fix 1 — Fixture Import UI consistency
 
-**Edge function** (`supabase/functions/bulk-import/index.ts`):
-- When `player.email` is null/empty, generate `firstname.lastname@grampianshockey.mock`
-- Query existing auth users to check if that email exists; if so, increment suffix (`firstname.lastname2@...`, `firstname.lastname3@...`) until unique
-- Remove the current "Email is required (skipped)" error on line 148-149
+Update `FixtureImport.tsx` to match `BulkImport.tsx` layout:
+- Same `max-w-7xl mx-auto` container
+- Same card structure with `CardTitle className="text-lg"` headers
+- Same helper text block beneath upload area with three `<p>` lines: supported formats, date format hints, inline correction note
+- Same badge styling in preview header (already matches — minor tweaks to description text)
+- Add `max-w-sm` wrapper on Association scope content (already present but ensure consistency)
 
-**Frontend** (`BulkImport.tsx`):
-- Remove the "Email required" validation on line 189
-- Allow empty email rows to pass client-side validation
+## Fix 2 — Fixture template reference sheet
 
-## Fix 2 — Clear All Test Data
+In `FixtureImport.tsx`, update the inline `onClick` for "Download Template" to:
+- Create a second sheet "Allowed Values" with columns: **Status** (`scheduled`), **Home Team / Away Team** (dynamically from `teamNameLookup` keys, capitalized)
+- Use the same `aoa_to_sheet` pattern as `BulkImport.tsx`: headers in row 1, values below
+- Scope teams to cascade selection (Fix 3 determines which teams are shown)
 
-**New edge function** (`supabase/functions/clear-test-data/index.ts`):
-1. Validate caller is SUPER_ADMIN via service role lookup
-2. Accept `association_id`
-3. Find all clubs → teams in that association
-4. Find all user IDs with memberships on those teams
-5. Delete in order: `user_roles` for those users + teams, `team_memberships` for those teams, `profiles` for those users, then delete auth users via `admin.deleteUser()`
-6. **Confirmed: profiles table records are deleted**, not just memberships and auth users
-7. Only delete users who have NO remaining memberships in other associations after removing the target association's memberships
-8. Return counts of deleted records
+## Fix 3 — Cascade selector on both import pages
 
-**Config** (`supabase/config.toml`): Add `[functions.clear-test-data] verify_jwt = false`
+**Shared approach for both pages:**
 
-**Frontend** (`BulkImport.tsx`):
-- Add "Clear All Test Data" button visible only when `isSuperAdmin`
-- Show `AlertDialog` with association selector and confirmation text
-- Call the edge function on confirm, show toast with results
+Add state for `selectedClubId`, `selectedDivision`, `selectedTeamId` alongside existing `selectedAssociationId`. Replace the single Association dropdown in the Import Scope card with a 4-column grid: Association, Club, Division, Team.
 
-## Fix 3 — Keep failed rows after import
+Each level filters the next:
+- Clubs filtered by selected association + admin scope
+- Divisions derived from teams within selected club + scope
+- Teams filtered by club + division + scope
 
-**Frontend** (`BulkImport.tsx`):
-- After `handleSubmit` completes with results, match returned `errors` array back to preview rows by `row_number`
-- Remove successfully imported rows from `rows` state
-- Keep failed rows with their server-side error message appended to `errors`
-- Change the submit button condition (line 653) from `!importResult` to also show when failed rows remain, enabling re-submission
-- Reset `importResult` when user edits a failed row
+Selecting a parent clears all children. Non-super-admins only see entities within their scoped IDs.
 
-## Fix 4 — Reference sheet in template
+**Scope enforcement (validation):**
+- In `BulkImport.tsx` `validateRows`: after resolving `team_id`, check that the resolved team/club/association falls within the cascade selection. If not, add an error like "Row outside selected scope (expected Club: X)".
+- In `FixtureImport.tsx` `validate`: after resolving `team_id`, check it matches the cascade. Reject rows whose resolved team is outside scope.
 
-**Frontend** (`BulkImport.tsx` `downloadTemplate`):
-- After creating the "Players" sheet, add a second sheet "Allowed Values"
-- Columns: Gender, Position, Role, Is Primary Team, Club (dynamic from `assocClubs`), Division (dynamic from teams in selected association)
-- Each column header in row 1, valid values listed vertically below
+**Template pre-fill:**
+- `BulkImport.tsx`: In `downloadTemplate`, after headers row, add a second row with the selected association name, club name, division, and team name in their respective columns. Other cells empty.
+- `FixtureImport.tsx`: Pre-fill `home_team` with the selected team name (if one is selected) and `competition` with the selected division.
 
-## Fix 5 — Roles restricted to Super Admin
+**Allowed Values scoping:**
+- Club list: if association selected, only clubs in that association. If club selected, only that club.
+- Division list: if club selected, only divisions in that club's teams. If division selected, only that one.
+- Team list: filtered by club + division selection.
 
-**Frontend** (`BulkImport.tsx`):
-- If `!isSuperAdmin`: remove "role" from template headers, hide Role column in preview table, strip `role` to null before submission
-- If `isSuperAdmin`: no change
+**BulkImport.tsx specific changes:**
+- Add `selectedClubId`, `selectedDivision`, `selectedTeamId` state
+- Build filtered lists using existing `assocClubs` and `assocTeams` patterns
+- Replace single Association dropdown with 4-column cascade grid
+- Update `validateRows` to enforce scope boundaries
+- Update `downloadTemplate` to pre-fill row 2 and scope the Allowed Values sheet
 
-**Edge function** (`supabase/functions/bulk-import/index.ts`):
-- Add `role` field to `PlayerRow` interface
-- When inserting `user_roles`: if caller is SUPER_ADMIN and `player.role` is a valid role string, use that role instead of hardcoded "PLAYER"
-- For non-SUPER_ADMIN callers, always use "PLAYER" regardless of input
-- Set appropriate scope on the role row: PLAYER/COACH/TEAM_MANAGER → `team_id`, CLUB_ADMIN → `club_id` (looked up from team), ASSOCIATION_ADMIN → `association_id`
+**FixtureImport.tsx specific changes:**
+- Add `selectedClubId`, `selectedDivision`, `selectedTeamId` state
+- Build filtered club/division/team lists from `clubs` and `teams` (from TeamContext)
+- Replace single Association dropdown with 4-column cascade grid
+- Update `validate` to enforce scope boundaries
+- Update template download handler to pre-fill and scope reference sheet
 
-## Files Changed
+## Fix 4 — Duplicate user detection warning
 
-| File | Action |
-|------|--------|
-| `src/pages/admin/BulkImport.tsx` | Edit — all 5 fixes (frontend) |
-| `supabase/functions/bulk-import/index.ts` | Edit — Fix 1, Fix 5 |
-| `supabase/functions/clear-test-data/index.ts` | Create — Fix 2 |
-| `supabase/config.toml` | Edit — add clear-test-data config |
+In `UsersManagement.tsx`:
 
-No database migrations needed.
+**Duplicate detection logic** (after `filteredUsers` is computed):
+- Build a `Map<string, string[]>` keyed by `(first_name + last_name).toLowerCase()` → array of user IDs
+- Any key with 2+ entries marks those user IDs as duplicates
+- Store in a `useMemo`-derived `Set<string>` of duplicate user IDs
+
+**UI changes:**
+- In the table Name cell: if user ID is in duplicates set, render an `AlertTriangle` icon (amber) with a tooltip "Possible duplicate account"
+- Import `AlertTriangle` from lucide (already imported) and `Tooltip/TooltipTrigger/TooltipContent/TooltipProvider` from UI components
+- Add `"duplicates"` option to status filter dropdown: `<SelectItem value="duplicates">Duplicates</SelectItem>`
+- In `filteredUsers` logic: when `statusFilter === "duplicates"`, filter to only users in the duplicates set
+
+## Files changed
+
+| File | Fixes |
+|------|-------|
+| `src/pages/admin/BulkImport.tsx` | Fix 3 (cascade selector, scope enforcement, template pre-fill, scoped allowed values) |
+| `src/pages/admin/FixtureImport.tsx` | Fix 1 (UI consistency), Fix 2 (reference sheet), Fix 3 (cascade selector, scope enforcement, template pre-fill) |
+| `src/pages/admin/UsersManagement.tsx` | Fix 4 (duplicate detection warning + filter) |
+
+No database migrations or edge function changes needed.
 
