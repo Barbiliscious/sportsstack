@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, XCircle, Loader2, AlertTriangle, Download,
+  ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, XCircle, Loader2, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminScope } from "@/hooks/useAdminScope";
 import { supabase } from "@/integrations/supabase/client";
-import { useTeamContext } from "@/contexts/TeamContext";
 import * as XLSX from "xlsx";
 
 interface ParsedFixture {
@@ -100,16 +99,23 @@ function timeDisplayTo24h(display: string): string {
 const FixtureImport = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { loading: scopeLoading, isAnyAdmin, isSuperAdmin, scopedAssociationIds } = useAdminScope();
-  const { teams, clubs } = useTeamContext();
+  const { loading: scopeLoading, isAnyAdmin, isSuperAdmin, scopedAssociationIds, scopedClubIds, scopedTeamIds: adminScopedTeamIds } = useAdminScope();
   const [submitting, setSubmitting] = useState(false);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<ParsedFixture[]>([]);
   const [importDone, setImportDone] = useState(false);
   const [correctionDialog, setCorrectionDialog] = useState<{ originalName: string; validTeams: string[] } | null>(null);
 
+  // Reference data
   const [associations, setAssociations] = useState<{ id: string; name: string }[]>([]);
+  const [clubs, setClubs] = useState<{ id: string; name: string; association_id: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: string; name: string; club_id: string; division: string | null }[]>([]);
+
+  // Cascade state
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
+  const [selectedClubId, setSelectedClubId] = useState("");
+  const [selectedDivision, setSelectedDivision] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState("");
 
   useEffect(() => {
     if (!scopeLoading && !isAnyAdmin) navigate("/dashboard");
@@ -117,8 +123,14 @@ const FixtureImport = () => {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.from("associations").select("id, name").order("name");
-      setAssociations(data || []);
+      const [aRes, cRes, tRes] = await Promise.all([
+        supabase.from("associations").select("id, name").order("name"),
+        supabase.from("clubs").select("id, name, association_id").order("name"),
+        supabase.from("teams").select("id, name, club_id, division").order("name"),
+      ]);
+      setAssociations(aRes.data || []);
+      setClubs(cRes.data || []);
+      setTeams(tRes.data || []);
     };
     load();
   }, []);
@@ -133,18 +145,80 @@ const FixtureImport = () => {
     ? associations
     : associations.filter((a) => scopedAssociationIds.includes(a.id));
 
-  // Build team name -> team_id lookup scoped to association
+  // Cascade filtering
+  const assocClubs = useMemo(() => {
+    const filtered = clubs.filter((c) => c.association_id === selectedAssociationId);
+    if (isSuperAdmin) return filtered;
+    if (scopedClubIds.length > 0) return filtered.filter((c) => scopedClubIds.includes(c.id));
+    if (scopedAssociationIds.includes(selectedAssociationId)) return filtered;
+    return filtered.filter((c) => teams.some((t) => t.club_id === c.id && adminScopedTeamIds.includes(t.id)));
+  }, [selectedAssociationId, clubs, isSuperAdmin, scopedClubIds, scopedAssociationIds, adminScopedTeamIds, teams]);
+
+  const assocTeams = useMemo(() => {
+    const clubIds = new Set(assocClubs.map((c) => c.id));
+    let filtered = teams.filter((t) => clubIds.has(t.club_id));
+    if (!isSuperAdmin && adminScopedTeamIds.length > 0 && !scopedAssociationIds.includes(selectedAssociationId) && scopedClubIds.length === 0) {
+      filtered = filtered.filter((t) => adminScopedTeamIds.includes(t.id));
+    }
+    return filtered;
+  }, [assocClubs, teams, isSuperAdmin, adminScopedTeamIds, scopedAssociationIds, selectedAssociationId, scopedClubIds]);
+
+  const cascadeClubs = assocClubs;
+
+  const cascadeDivisions = useMemo(() => {
+    let filtered = assocTeams;
+    if (selectedClubId) filtered = filtered.filter((t) => t.club_id === selectedClubId);
+    const divs = new Set<string>();
+    filtered.forEach((t) => { if (t.division) divs.add(t.division); });
+    return Array.from(divs).sort();
+  }, [assocTeams, selectedClubId]);
+
+  const cascadeTeams = useMemo(() => {
+    let filtered = assocTeams;
+    if (selectedClubId) filtered = filtered.filter((t) => t.club_id === selectedClubId);
+    if (selectedDivision) filtered = filtered.filter((t) => t.division === selectedDivision);
+    return filtered;
+  }, [assocTeams, selectedClubId, selectedDivision]);
+
+  const handleAssociationChange = (id: string) => {
+    setSelectedAssociationId(id);
+    setSelectedClubId("");
+    setSelectedDivision("");
+    setSelectedTeamId("");
+  };
+
+  const handleClubChange = (id: string) => {
+    setSelectedClubId(id);
+    setSelectedDivision("");
+    setSelectedTeamId("");
+  };
+
+  const handleDivisionChange = (d: string) => {
+    setSelectedDivision(d);
+    setSelectedTeamId("");
+  };
+
+  // Team name lookup scoped to cascade
   const teamNameLookup = useMemo(() => {
-    const assocClubs = clubs.filter((c) => c.association_id === selectedAssociationId);
-    const assocClubIds = new Set(assocClubs.map((c) => c.id));
-    const assocTeams = teams.filter((t) => assocClubIds.has(t.club_id));
+    const map = new Map<string, { id: string; club_name: string }>();
+    for (const t of cascadeTeams) {
+      const club = assocClubs.find((c) => c.id === t.club_id);
+      map.set(t.name.toLowerCase().trim(), { id: t.id, club_name: club?.name || "" });
+    }
+    return map;
+  }, [cascadeTeams, assocClubs]);
+
+  // Full association-level team lookup for matching (scope enforcement happens separately)
+  const allAssocTeamLookup = useMemo(() => {
     const map = new Map<string, { id: string; club_name: string }>();
     for (const t of assocTeams) {
       const club = assocClubs.find((c) => c.id === t.club_id);
       map.set(t.name.toLowerCase().trim(), { id: t.id, club_name: club?.name || "" });
     }
     return map;
-  }, [selectedAssociationId, clubs, teams]);
+  }, [assocTeams, assocClubs]);
+
+  const scopeTeamIds = useMemo(() => new Set(cascadeTeams.map((t) => t.id)), [cascadeTeams]);
 
   const validate = useCallback((parsed: Omit<ParsedFixture, "errors" | "team_id" | "opponent_name" | "is_home">[]): ParsedFixture[] => {
     return parsed.map((r) => {
@@ -152,9 +226,8 @@ const FixtureImport = () => {
       if (!r.date) errors.push("Date required");
       if (!r.home_team && !r.away_team) errors.push("Home team and away team required");
 
-      // Try to match one of the teams to our DB
-      const homeMatch = teamNameLookup.get(r.home_team.toLowerCase().trim());
-      const awayMatch = teamNameLookup.get(r.away_team.toLowerCase().trim());
+      const homeMatch = allAssocTeamLookup.get(r.home_team.toLowerCase().trim());
+      const awayMatch = allAssocTeamLookup.get(r.away_team.toLowerCase().trim());
 
       let team_id: string | null = null;
       let opponent_name = "";
@@ -172,9 +245,24 @@ const FixtureImport = () => {
         errors.push(`Neither '${r.home_team}' nor '${r.away_team}' found as a team in this association`);
       }
 
+      // Scope enforcement
+      if (team_id && errors.length === 0 && !scopeTeamIds.has(team_id)) {
+        const team = teams.find((t) => t.id === team_id);
+        const club = team ? clubs.find((c) => c.id === team.club_id) : null;
+        const scopeDesc = selectedTeamId
+          ? `team '${cascadeTeams.find((t) => t.id === selectedTeamId)?.name || ""}'`
+          : selectedDivision
+          ? `division '${selectedDivision}'`
+          : selectedClubId
+          ? `club '${cascadeClubs.find((c) => c.id === selectedClubId)?.name || ""}'`
+          : "selected scope";
+        errors.push(`Row outside selected scope (${scopeDesc}). Resolved to ${club?.name || "unknown"} / ${team?.division || "unknown"}.`);
+        team_id = null;
+      }
+
       return { ...r, errors, team_id, opponent_name, is_home };
     });
-  }, [teamNameLookup]);
+  }, [allAssocTeamLookup, scopeTeamIds, selectedTeamId, selectedDivision, selectedClubId, cascadeTeams, cascadeClubs, teams, clubs]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -214,7 +302,7 @@ const FixtureImport = () => {
     if (rows.length > 0) {
       setRows((prev) => validate(prev.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest)));
     }
-  }, [teamNameLookup]);
+  }, [allAssocTeamLookup, scopeTeamIds]);
 
   const validRows = rows.filter((r) => r.errors.length === 0);
   const errorRows = rows.filter((r) => r.errors.length > 0);
@@ -253,10 +341,43 @@ const FixtureImport = () => {
     toast({ title: "Fixtures Imported", description: `${validRows.length} fixture(s) created.` });
   };
 
+  const downloadTemplate = () => {
+    const headers = ["round_number", "date", "time", "home_team", "away_team", "location", "competition", "notes"];
+
+    // Pre-fill row 2 with cascade values
+    const selectedTeamName = cascadeTeams.find((t) => t.id === selectedTeamId)?.name || "";
+    const prefillRow = headers.map((h) => {
+      if (h === "home_team") return selectedTeamName;
+      if (h === "competition") return selectedDivision;
+      return "";
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, prefillRow]);
+    ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
+
+    // Allowed Values reference sheet
+    const scopedTeamNames = cascadeTeams.map((t) => t.name);
+    const refHeaders = ["Status", "Home Team / Away Team"];
+    const statusValues = ["scheduled"];
+    const maxLen = Math.max(statusValues.length, scopedTeamNames.length);
+    const refData: string[][] = [refHeaders];
+    for (let i = 0; i < maxLen; i++) {
+      refData.push([statusValues[i] || "", scopedTeamNames[i] || ""]);
+    }
+    const refWs = XLSX.utils.aoa_to_sheet(refData);
+    refWs["!cols"] = refHeaders.map((h) => ({ wch: Math.max(h.length + 4, 24) }));
+    XLSX.utils.book_append_sheet(wb, refWs, "Allowed Values");
+
+    XLSX.writeFile(wb, "fixture_import_template.xlsx");
+  };
+
   if (scopeLoading) return null;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/admin/fixtures")}>
           <ArrowLeft className="h-5 w-5" />
@@ -267,19 +388,51 @@ const FixtureImport = () => {
         </div>
       </div>
 
-      {/* Association Scope */}
+      {/* Import Scope — Cascade Selector */}
       <Card>
         <CardHeader><CardTitle className="text-lg">Import Scope</CardTitle></CardHeader>
         <CardContent>
-          <div className="space-y-2 max-w-sm">
-            <Label>Association</Label>
-            <Select value={selectedAssociationId} onValueChange={setSelectedAssociationId} disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}>
-              <SelectTrigger><SelectValue placeholder="Select association" /></SelectTrigger>
-              <SelectContent>
-                {availableAssociations.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Association</Label>
+              <Select value={selectedAssociationId} onValueChange={handleAssociationChange} disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}>
+                <SelectTrigger><SelectValue placeholder="Select association" /></SelectTrigger>
+                <SelectContent>
+                  {availableAssociations.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Club</Label>
+              <Select value={selectedClubId} onValueChange={handleClubChange} disabled={!selectedAssociationId || cascadeClubs.length === 0}>
+                <SelectTrigger><SelectValue placeholder="All clubs" /></SelectTrigger>
+                <SelectContent>
+                  {cascadeClubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Division</Label>
+              <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={cascadeDivisions.length === 0}>
+                <SelectTrigger><SelectValue placeholder="All divisions" /></SelectTrigger>
+                <SelectContent>
+                  {cascadeDivisions.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Team</Label>
+              <Select value={selectedTeamId} onValueChange={setSelectedTeamId} disabled={cascadeTeams.length === 0}>
+                <SelectTrigger><SelectValue placeholder="All teams" /></SelectTrigger>
+                <SelectContent>
+                  {cascadeTeams.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Rows outside the selected scope will be rejected. Association is the minimum required selection.
+          </p>
         </CardContent>
       </Card>
 
@@ -290,17 +443,10 @@ const FixtureImport = () => {
           <div className="flex items-center gap-4 flex-wrap">
             <Label htmlFor="fixture-upload" className="flex items-center gap-2 px-4 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
               <Upload className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">Choose .xlsx or .csv</span>
+              <span className="text-sm">Choose .xlsx or .csv file</span>
             </Label>
             <Input id="fixture-upload" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} disabled={!selectedAssociationId} />
-            <Button variant="outline" size="sm" onClick={() => {
-              const headers = ["round_number", "date", "time", "home_team", "away_team", "location", "competition", "notes"];
-              const ws = XLSX.utils.aoa_to_sheet([headers]);
-              ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
-              const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
-              XLSX.writeFile(wb, "fixture_import_template.xlsx");
-            }}>
+            <Button variant="outline" size="sm" onClick={downloadTemplate}>
               <Download className="h-4 w-4 mr-1" />
               Download Template
             </Button>
@@ -310,7 +456,11 @@ const FixtureImport = () => {
               </div>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">One of home_team or away_team must match a team in the selected association. Dates in DD/MM/YYYY format.</p>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>Supported formats: <span className="font-medium">.xlsx, .xls, .csv</span></p>
+            <p>Dates in DD/MM/YYYY format. One of home_team or away_team must match a team in the selected scope.</p>
+            <p>The template includes an "Allowed Values" reference sheet with valid team names and statuses.</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -331,7 +481,7 @@ const FixtureImport = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-auto max-h-[500px]">
+            <div className="rounded-md border overflow-auto max-h-[600px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -436,20 +586,10 @@ const FixtureImport = () => {
                     setRows((prev) => {
                       const updated = prev.map((r) => ({
                         ...r,
-                        home_team: r.home_team.toLowerCase().trim() === original ? teamNameLookup.get(replacement)?.club_name ? replacement : r.home_team : r.home_team,
-                        away_team: r.away_team.toLowerCase().trim() === original ? teamNameLookup.get(replacement)?.club_name ? replacement : r.away_team : r.away_team,
+                        home_team: r.home_team.toLowerCase().trim() === original ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.home_team,
+                        away_team: r.away_team.toLowerCase().trim() === original ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.away_team,
                       }));
-                      // Re-apply team name with proper casing from lookup
-                      const fixedRows = updated.map((r) => ({
-                        ...r,
-                        home_team: r.home_team.toLowerCase().trim() === original
-                          ? (Array.from(teamNameLookup.entries()).find(([k]) => k === replacement)?.[1] ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.home_team)
-                          : r.home_team,
-                        away_team: r.away_team.toLowerCase().trim() === original
-                          ? (Array.from(teamNameLookup.entries()).find(([k]) => k === replacement)?.[1] ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.away_team)
-                          : r.away_team,
-                      }));
-                      return validate(fixedRows.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest));
+                      return validate(updated.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest));
                     });
                     setCorrectionDialog(null);
                     toast({ title: "Replaced", description: `All instances of '${correctionDialog.originalName}' updated.` });

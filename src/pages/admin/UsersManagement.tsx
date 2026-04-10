@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +20,11 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
-import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download, RefreshCw, Plus } from "lucide-react";
+import { Users, ArrowLeft, Shield, Search, Check, X, UserPlus, FileSpreadsheet, Download, RefreshCw, Plus, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,7 +87,6 @@ const UsersManagement = () => {
   const [saving, setSaving] = useState(false);
   const [primaryRequests, setPrimaryRequests] = useState<any[]>([]);
 
-  // Team assignment state
   const [showTeamAssign, setShowTeamAssign] = useState(false);
   const [assignAssociationId, setAssignAssociationId] = useState("");
   const [assignClubId, setAssignClubId] = useState("");
@@ -190,9 +192,29 @@ const UsersManagement = () => {
     }
   }, [scopeLoading, isAnyAdmin, isSuperAdmin, scopedTeamIds]);
 
+  // Duplicate detection
+  const duplicateUserIds = useMemo(() => {
+    const nameMap = new Map<string, string[]>();
+    users.forEach((u) => {
+      const key = `${(u.first_name || "").toLowerCase()}${(u.last_name || "").toLowerCase()}`.trim();
+      if (!key) return;
+      const arr = nameMap.get(key) || [];
+      arr.push(u.id);
+      nameMap.set(key, arr);
+    });
+    const dupes = new Set<string>();
+    nameMap.forEach((ids) => {
+      if (ids.length >= 2) ids.forEach((id) => dupes.add(id));
+    });
+    return dupes;
+  }, [users]);
+
   const filteredUsers = users.filter((user) => {
     const fullName = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
     if (!fullName.includes(searchQuery.toLowerCase())) return false;
+    if (statusFilter === "duplicates") {
+      return duplicateUserIds.has(user.id);
+    }
     if (statusFilter !== "all") {
       if (statusFilter === "unassigned") {
         if (user.memberships.length > 0) return false;
@@ -306,11 +328,8 @@ const UsersManagement = () => {
     }
   };
 
-  // --- Role dialog with scoped selectors ---
-
   const handleOpenRoleDialog = async (u: UserWithRoles) => {
     setSelectedUser(u);
-    // Fetch current roles with scope
     const { data: rolesData } = await supabase
       .from("user_roles")
       .select("role, association_id, club_id, team_id")
@@ -347,7 +366,6 @@ const UsersManagement = () => {
       prev.map((r) => {
         if (r.role !== role) return r;
         const updated = { ...r, [field]: value || null };
-        // Clear child fields when parent changes
         if (field === "association_id") {
           updated.club_id = null;
           updated.team_id = null;
@@ -376,7 +394,6 @@ const UsersManagement = () => {
     if (!selectedUser) return;
     setSaving(true);
 
-    // Delete all existing roles for this user, then re-insert
     const { error: delErr } = await supabase.from("user_roles").delete().eq("user_id", selectedUser.id);
     if (delErr) {
       toast({ title: "Error", description: "Failed to update roles", variant: "destructive" });
@@ -430,7 +447,6 @@ const UsersManagement = () => {
     setAssignSaving(false);
   };
 
-  // Helper: get clubs filtered by association for scope selectors
   const getClubsForAssociation = (assocId: string | null) => {
     if (!assocId) return clubs;
     return clubs.filter((c) => c.association_id === assocId);
@@ -441,7 +457,6 @@ const UsersManagement = () => {
     return teams.filter((t) => t.club_id === clubId);
   };
 
-  // Assign team cascade helpers
   const assignAvailableClubs = assignAssociationId
     ? clubs.filter((c) => c.association_id === assignAssociationId)
     : clubs;
@@ -459,485 +474,490 @@ const UsersManagement = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-          <p className="text-muted-foreground">Manage user profiles, roles, and memberships</p>
+    <TooltipProvider>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold tracking-tight">Users</h1>
+            <p className="text-muted-foreground">Manage user profiles, roles, and memberships</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => navigate("/admin/bulk-import")}>
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Bulk Import
+            </Button>
+            <Button variant="outline" onClick={handleExport} disabled={filteredUsers.length === 0}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+            <Button onClick={() => navigate("/admin/add-player")}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Player
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate("/admin/bulk-import")}>
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
-            Bulk Import
-          </Button>
-          <Button variant="outline" onClick={handleExport} disabled={filteredUsers.length === 0}>
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-          <Button onClick={() => navigate("/admin/add-player")}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add Player
-          </Button>
-        </div>
-      </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="PENDING">Pending</SelectItem>
+              <SelectItem value="APPROVED">Approved</SelectItem>
+              <SelectItem value="DECLINED">Declined</SelectItem>
+              {isSuperAdmin && <SelectItem value="unassigned">Unassigned</SelectItem>}
+              <SelectItem value="duplicates">Duplicates</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={associationFilter} onValueChange={(v) => { setAssociationFilter(v); setClubFilter("all"); }}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Association" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Associations</SelectItem>
+              {availableAssociations.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={clubFilter} onValueChange={setClubFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Club" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clubs</SelectItem>
+              {availableClubs.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="PENDING">Pending</SelectItem>
-            <SelectItem value="APPROVED">Approved</SelectItem>
-            <SelectItem value="DECLINED">Declined</SelectItem>
-            {isSuperAdmin && <SelectItem value="unassigned">Unassigned</SelectItem>}
-          </SelectContent>
-        </Select>
-        <Select value={associationFilter} onValueChange={(v) => { setAssociationFilter(v); setClubFilter("all"); }}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Association" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Associations</SelectItem>
-            {availableAssociations.map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={clubFilter} onValueChange={setClubFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Club" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Clubs</SelectItem>
-            {availableClubs.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
-      {/* Pending Primary Team Change Requests */}
-      {primaryRequests.length > 0 && (
+        {/* Pending Primary Team Change Requests */}
+        {primaryRequests.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <RefreshCw className="h-5 w-5" />
+                Pending Primary Team Changes ({primaryRequests.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {primaryRequests.map((req: any) => (
+                  <div key={req.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium text-foreground">{req.user_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {req.from_team_name
+                          ? `${req.from_team_name} → ${req.to_team_name}`
+                          : `Set ${req.to_team_name} as primary`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleApprovePrimaryRequest(req.id)}>
+                        <Check className="h-3 w-3 mr-1" /> Approve
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeclinePrimaryRequest(req.id)}>
+                        <X className="h-3 w-3 mr-1" /> Decline
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Table */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <RefreshCw className="h-5 w-5" />
-              Pending Primary Team Changes ({primaryRequests.length})
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Users
             </CardTitle>
+            <CardDescription>{filteredUsers.length} user(s)</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {primaryRequests.map((req: any) => (
-                <div key={req.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium text-foreground">{req.user_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {req.from_team_name
-                        ? `${req.from_team_name} → ${req.to_team_name}`
-                        : `Set ${req.to_team_name} as primary`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleApprovePrimaryRequest(req.id)}>
-                      <Check className="h-3 w-3 mr-1" /> Approve
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeclinePrimaryRequest(req.id)}>
-                      <X className="h-3 w-3 mr-1" /> Decline
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No users found.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Player Status</TableHead>
+                    <TableHead>Team(s)</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Roles</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {u.first_name || u.last_name
+                            ? `${u.first_name || ""} ${u.last_name || ""}`.trim()
+                            : "(No name)"}
+                          {duplicateUserIds.has(u.id) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent>Possible duplicate account</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            (u as any).status === "Suspended"
+                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                              : (u as any).status === "Inactive"
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                          }
+                        >
+                          {(u as any).status || "Active"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {u.memberships.length === 0 ? (
+                            <span className="text-muted-foreground text-sm">Unassigned</span>
+                          ) : (
+                            u.memberships.map((m) => (
+                              <Badge key={m.id} variant="outline" className="text-xs">
+                                {m.team_name || "Unknown"}
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {u.memberships.length === 0 ? (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          ) : (
+                            u.memberships.map((m) => (
+                              <div key={m.id} className="flex items-center gap-1">
+                                <Badge
+                                  variant="secondary"
+                                  className={
+                                    m.status === "PENDING"
+                                      ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+                                      : m.status === "APPROVED"
+                                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                                      : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                                  }
+                                >
+                                  {m.status}
+                                </Badge>
+                                {m.status === "PENDING" && (
+                                  <div className="flex gap-0.5">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleApproveMembership(m.id)}>
+                                      <Check className="h-3 w-3 text-green-600" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeclineMembership(m.id)}>
+                                      <X className="h-3 w-3 text-destructive" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {u.roles.length === 0 ? (
+                            <span className="text-muted-foreground text-sm">No roles</span>
+                          ) : (
+                            u.roles.map((role) => (
+                              <Badge key={role} className={getRoleBadgeColor(role)} variant="secondary">
+                                {getRoleDisplayName(role)}
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => handleOpenRoleDialog(u)}>
+                          <Shield className="mr-2 h-4 w-4" />
+                          Roles & Teams
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Users
-          </CardTitle>
-          <CardDescription>{filteredUsers.length} user(s)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+        {/* Role Management Dialog */}
+        <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Manage Roles & Teams</DialogTitle>
+              <DialogDescription>
+                Update roles and team assignments for {selectedUser?.first_name} {selectedUser?.last_name}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Roles</h4>
+              {ALL_ROLES.map((role) => {
+                const disabled = !canAssignRole(role);
+                const roleScope = selectedRoleScopes.find((r) => r.role === role);
+                const isChecked = !!roleScope;
+                const scopeType = ROLES_NEEDING_SCOPE[role];
+
+                return (
+                  <div key={role} className="space-y-2">
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id={role}
+                        checked={isChecked}
+                        onCheckedChange={() => handleToggleRole(role)}
+                        disabled={disabled}
+                      />
+                      <Label htmlFor={role} className={`flex items-center gap-2 ${disabled ? "text-muted-foreground" : ""}`}>
+                        <Badge className={getRoleBadgeColor(role)} variant="secondary">
+                          {getRoleDisplayName(role)}
+                        </Badge>
+                        {disabled && <span className="text-xs">(insufficient permissions)</span>}
+                      </Label>
+                    </div>
+
+                    {isChecked && scopeType && (
+                      <div className="ml-8 grid gap-2 sm:grid-cols-3 border-l-2 border-muted pl-4 py-2">
+                        {(scopeType === "association" || scopeType === "club" || scopeType === "team") && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Association</Label>
+                            <Select
+                              value={roleScope.association_id || ""}
+                              onValueChange={(v) => handleRoleScopeChange(role, "association_id", v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {associations.map((a) => (
+                                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {(scopeType === "club" || scopeType === "team") && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Club</Label>
+                            <Select
+                              value={roleScope.club_id || ""}
+                              onValueChange={(v) => handleRoleScopeChange(role, "club_id", v)}
+                              disabled={!roleScope.association_id}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getClubsForAssociation(roleScope.association_id).map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {scopeType === "team" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Team</Label>
+                            <Select
+                              value={roleScope.team_id || ""}
+                              onValueChange={(v) => handleRoleScopeChange(role, "team_id", v)}
+                              disabled={!roleScope.club_id}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getTeamsForClub(roleScope.club_id).map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No users found.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Player Status</TableHead>
-                  <TableHead>Team(s)</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Roles</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                      {user.first_name || user.last_name
-                        ? `${user.first_name || ""} ${user.last_name || ""}`.trim()
-                        : "(No name)"}
-                    </TableCell>
-                    <TableCell>
+
+            <Separator />
+
+            <div className="space-y-3 py-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Team Memberships</h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTeamAssign(!showTeamAssign)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Assign Team
+                </Button>
+              </div>
+
+              {selectedUser && selectedUser.memberships.length > 0 ? (
+                <div className="space-y-1">
+                  {selectedUser.memberships.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2 text-sm py-1">
+                      <Badge variant="outline" className="text-xs">{m.team_name || "Unknown"}</Badge>
+                      <span className="text-muted-foreground text-xs">{m.membership_type}</span>
                       <Badge
                         variant="secondary"
                         className={
-                          (user as any).status === "Suspended"
-                            ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-                            : (user as any).status === "Inactive"
-                            ? "bg-muted text-muted-foreground"
-                            : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                          m.status === "APPROVED"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 text-xs"
+                            : m.status === "PENDING"
+                            ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 text-xs"
+                            : "text-xs"
                         }
                       >
-                        {(user as any).status || "Active"}
+                        {m.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {user.memberships.length === 0 ? (
-                          <span className="text-muted-foreground text-sm">Unassigned</span>
-                        ) : (
-                          user.memberships.map((m) => (
-                            <Badge key={m.id} variant="outline" className="text-xs">
-                              {m.team_name || "Unknown"}
-                            </Badge>
-                          ))
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {user.memberships.length === 0 ? (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        ) : (
-                          user.memberships.map((m) => (
-                            <div key={m.id} className="flex items-center gap-1">
-                              <Badge
-                                variant="secondary"
-                                className={
-                                  m.status === "PENDING"
-                                    ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
-                                    : m.status === "APPROVED"
-                                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                                    : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-                                }
-                              >
-                                {m.status}
-                              </Badge>
-                              {m.status === "PENDING" && (
-                                <div className="flex gap-0.5">
-                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleApproveMembership(m.id)}>
-                                    <Check className="h-3 w-3 text-green-600" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeclineMembership(m.id)}>
-                                    <X className="h-3 w-3 text-destructive" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {user.roles.length === 0 ? (
-                          <span className="text-muted-foreground text-sm">No roles</span>
-                        ) : (
-                          user.roles.map((role) => (
-                            <Badge key={role} className={getRoleBadgeColor(role)} variant="secondary">
-                              {getRoleDisplayName(role)}
-                            </Badge>
-                          ))
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => handleOpenRoleDialog(user)}>
-                        <Shield className="mr-2 h-4 w-4" />
-                        Roles & Teams
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Role Management Dialog with Scope Selectors + Team Assignment */}
-      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Manage Roles & Teams</DialogTitle>
-            <DialogDescription>
-              Update roles and team assignments for {selectedUser?.first_name} {selectedUser?.last_name}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Roles Section */}
-          <div className="space-y-4 py-2">
-            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Roles</h4>
-            {ALL_ROLES.map((role) => {
-              const disabled = !canAssignRole(role);
-              const roleScope = selectedRoleScopes.find((r) => r.role === role);
-              const isChecked = !!roleScope;
-              const scopeType = ROLES_NEEDING_SCOPE[role];
-
-              return (
-                <div key={role} className="space-y-2">
-                  <div className="flex items-center space-x-3">
-                    <Checkbox
-                      id={role}
-                      checked={isChecked}
-                      onCheckedChange={() => handleToggleRole(role)}
-                      disabled={disabled}
-                    />
-                    <Label htmlFor={role} className={`flex items-center gap-2 ${disabled ? "text-muted-foreground" : ""}`}>
-                      <Badge className={getRoleBadgeColor(role)} variant="secondary">
-                        {getRoleDisplayName(role)}
-                      </Badge>
-                      {disabled && <span className="text-xs">(insufficient permissions)</span>}
-                    </Label>
-                  </div>
-
-                  {/* Scope selectors when role is checked */}
-                  {isChecked && scopeType && (
-                    <div className="ml-8 grid gap-2 sm:grid-cols-3 border-l-2 border-muted pl-4 py-2">
-                      {/* Association selector for association/club/team scoped roles */}
-                      {(scopeType === "association" || scopeType === "club" || scopeType === "team") && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Association</Label>
-                          <Select
-                            value={roleScope.association_id || ""}
-                            onValueChange={(v) => handleRoleScopeChange(role, "association_id", v)}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Select..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {associations.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Club selector for club/team scoped roles */}
-                      {(scopeType === "club" || scopeType === "team") && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Club</Label>
-                          <Select
-                            value={roleScope.club_id || ""}
-                            onValueChange={(v) => handleRoleScopeChange(role, "club_id", v)}
-                            disabled={!roleScope.association_id}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Select..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {getClubsForAssociation(roleScope.association_id).map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Team selector for team scoped roles */}
-                      {scopeType === "team" && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Team</Label>
-                          <Select
-                            value={roleScope.team_id || ""}
-                            onValueChange={(v) => handleRoleScopeChange(role, "team_id", v)}
-                            disabled={!roleScope.club_id}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Select..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {getTeamsForClub(roleScope.club_id).map((t) => (
-                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No team memberships</p>
+              )}
 
-          <Separator />
-
-          {/* Team Assignment Section */}
-          <div className="space-y-3 py-2">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Team Memberships</h4>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowTeamAssign(!showTeamAssign)}
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                Assign Team
-              </Button>
+              {showTeamAssign && (
+                <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Association</Label>
+                      <Select
+                        value={assignAssociationId}
+                        onValueChange={(v) => {
+                          setAssignAssociationId(v);
+                          setAssignClubId("");
+                          setAssignTeamId("");
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select association" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {associations.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Club</Label>
+                      <Select
+                        value={assignClubId}
+                        onValueChange={(v) => {
+                          setAssignClubId(v);
+                          setAssignTeamId("");
+                        }}
+                        disabled={!assignAssociationId}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select club" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assignAvailableClubs.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Team</Label>
+                      <Select
+                        value={assignTeamId}
+                        onValueChange={setAssignTeamId}
+                        disabled={!assignClubId}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assignAvailableTeams.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Membership Type</Label>
+                      <Select
+                        value={assignMembershipType}
+                        onValueChange={(v) => setAssignMembershipType(v as MembershipType)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PRIMARY">Primary</SelectItem>
+                          <SelectItem value="PERMANENT">Permanent</SelectItem>
+                          <SelectItem value="FILL_IN">Fill-in</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setShowTeamAssign(false)}>Cancel</Button>
+                    <Button size="sm" onClick={handleAssignTeam} disabled={!assignTeamId || assignSaving}>
+                      {assignSaving ? "Adding..." : "Add Membership"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Current memberships (read-only) */}
-            {selectedUser && selectedUser.memberships.length > 0 ? (
-              <div className="space-y-1">
-                {selectedUser.memberships.map((m) => (
-                  <div key={m.id} className="flex items-center gap-2 text-sm py-1">
-                    <Badge variant="outline" className="text-xs">{m.team_name || "Unknown"}</Badge>
-                    <span className="text-muted-foreground text-xs">{m.membership_type}</span>
-                    <Badge
-                      variant="secondary"
-                      className={
-                        m.status === "APPROVED"
-                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 text-xs"
-                          : m.status === "PENDING"
-                          ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 text-xs"
-                          : "text-xs"
-                      }
-                    >
-                      {m.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No team memberships</p>
-            )}
-
-            {/* Add team assignment form */}
-            {showTeamAssign && (
-              <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Association</Label>
-                    <Select
-                      value={assignAssociationId}
-                      onValueChange={(v) => {
-                        setAssignAssociationId(v);
-                        setAssignClubId("");
-                        setAssignTeamId("");
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select association" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {associations.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Club</Label>
-                    <Select
-                      value={assignClubId}
-                      onValueChange={(v) => {
-                        setAssignClubId(v);
-                        setAssignTeamId("");
-                      }}
-                      disabled={!assignAssociationId}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select club" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {assignAvailableClubs.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Team</Label>
-                    <Select
-                      value={assignTeamId}
-                      onValueChange={setAssignTeamId}
-                      disabled={!assignClubId}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select team" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {assignAvailableTeams.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Membership Type</Label>
-                    <Select
-                      value={assignMembershipType}
-                      onValueChange={(v) => setAssignMembershipType(v as MembershipType)}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PRIMARY">Primary</SelectItem>
-                        <SelectItem value="PERMANENT">Permanent</SelectItem>
-                        <SelectItem value="FILL_IN">Fill-in</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setShowTeamAssign(false)}>Cancel</Button>
-                  <Button size="sm" onClick={handleAssignTeam} disabled={!assignTeamId || assignSaving}>
-                    {assignSaving ? "Adding..." : "Add Membership"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveRoles} disabled={saving}>
-              {saving ? "Saving..." : "Save Roles"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveRoles} disabled={saving}>
+                {saving ? "Saving..." : "Save Roles"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 };
 
