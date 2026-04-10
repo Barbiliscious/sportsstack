@@ -132,51 +132,75 @@ export type Database = {
       games: {
         Row: {
           away_score: number | null
+          bye_team_id: string | null
           created_at: string
           game_date: string
           home_score: number | null
+          host_club_id: string | null
           id: string
+          is_bye: boolean
           is_home: boolean
           location: string | null
           notes: string | null
           opponent_name: string
+          pitch_id: string | null
           round_number: number | null
           season_id: string | null
+          special_round_name: string | null
           status: string
           team_id: string
+          umpire_club_1_id: string | null
+          umpire_club_2_id: string | null
           updated_at: string
+          venue_id: string | null
         }
         Insert: {
           away_score?: number | null
+          bye_team_id?: string | null
           created_at?: string
           game_date: string
           home_score?: number | null
+          host_club_id?: string | null
           id?: string
+          is_bye?: boolean
           is_home?: boolean
           location?: string | null
           notes?: string | null
           opponent_name: string
+          pitch_id?: string | null
           round_number?: number | null
           season_id?: string | null
+          special_round_name?: string | null
           status?: string
           team_id: string
+          umpire_club_1_id?: string | null
+          umpire_club_2_id?: string | null
           updated_at?: string
+          venue_id?: string | null
         }
         Update: {
           away_score?: number | null
+          bye_team_id?: string | null
           created_at?: string
           game_date?: string
           home_score?: number | null
+          host_club_id?: string | null
           id?: string
+          is_bye?: boolean
           is_home?: boolean
           location?: string | null
           notes?: string | null
           opponent_name?: string
+          pitch_id?: string | null
           round_number?: number | null
           season_id?: string | null
+          special_round_name?: string | null
           status?: string
           team_id?: string
+          umpire_club_1_id?: string | null
+          umpire_club_2_id?: string | null
           updated_at?: string
+          venue_id?: string | null
         }
         Relationships: [
           {
@@ -313,6 +337,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pitches: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          venue_id?: string
+        }
+        Relationships: []
       }
       primary_change_requests: {
         Row: {
@@ -555,6 +603,7 @@ export type Database = {
           created_at: string
           division: string | null
           gender: string | null
+          home_venue_id: string | null
           id: string
           name: string
           nickname: string | null
@@ -567,6 +616,7 @@ export type Database = {
           created_at?: string
           division?: string | null
           gender?: string | null
+          home_venue_id?: string | null
           id?: string
           name: string
           nickname?: string | null
@@ -579,6 +629,7 @@ export type Database = {
           created_at?: string
           division?: string | null
           gender?: string | null
+          home_venue_id?: string | null
           id?: string
           name?: string
           nickname?: string | null
@@ -646,6 +697,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      venues: {
+        Row: {
+          address: string | null
+          association_id: string | null
+          available_times: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          postcode: string | null
+          state: string | null
+          suburb: string | null
+        }
+        Insert: {
+          address?: string | null
+          association_id?: string | null
+          available_times?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          postcode?: string | null
+          state?: string | null
+          suburb?: string | null
+        }
+        Update: {
+          address?: string | null
+          association_id?: string | null
+          available_times?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          postcode?: string | null
+          state?: string | null
+          suburb?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
