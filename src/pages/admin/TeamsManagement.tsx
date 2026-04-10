@@ -220,6 +220,16 @@ const TeamsManagement = () => {
                     </Select>
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label>Home Venue</Label>
+                  <Select value={formData.home_venue_id || "__none__"} onValueChange={(v) => setFormData({ ...formData, home_venue_id: v === "__none__" ? "" : v })}>
+                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {venues.map((v) => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
