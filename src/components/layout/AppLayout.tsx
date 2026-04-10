@@ -31,6 +31,7 @@ import {
   Shield,
   Globe,
   ChevronDown,
+  MapPin,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,6 +48,7 @@ const NAV_SETS: Record<AppMode, { path: string; label: string; icon: typeof Layo
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
+    { path: "/admin/venues", label: "Venues", icon: MapPin },
     { path: "/admin/users", label: "Users", icon: UserCog },
     { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
@@ -55,6 +57,7 @@ const NAV_SETS: Record<AppMode, { path: string; label: string; icon: typeof Layo
     { path: "/admin/clubs", label: "Clubs", icon: Building2 },
     { path: "/admin/teams", label: "Teams", icon: Shield },
     { path: "/admin/fixtures", label: "Fixtures", icon: Calendar },
+    { path: "/admin/venues", label: "Venues", icon: MapPin },
     { path: "/admin/users", label: "Users", icon: UserCog },
     { path: "/admin/requests", label: "Requests", icon: ClipboardList },
   ],
