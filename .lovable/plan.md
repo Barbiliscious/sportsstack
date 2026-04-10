@@ -1,58 +1,28 @@
 
 
-# Database Schema Update — Venues, Pitches, and Game/Team Columns
+# Venues Management Page (with View-Only Badge)
 
-## New Tables
+Build the full Venues management page and integrate it into routing/sidebar, plus update TeamsManagement with a Home Venue dropdown. Incorporates the "View only" badge for CLUB_ADMIN users and the delete safety check from prior discussions.
 
-### `venues`
-- `id` uuid PK default `gen_random_uuid()`
-- `name` text NOT NULL
-- `address` text
-- `suburb` text
-- `state` text
-- `postcode` text
-- `phone` text
-- `email` text
-- `notes` text
-- `available_times` text
-- `association_id` uuid nullable
-- `created_at` timestamptz default `now()`
+## Files to create/modify
 
-RLS (matching `clubs`/`associations` pattern):
-- SELECT: public, `true` (anyone can view)
-- ALL: authenticated admins (`SUPER_ADMIN`, `ASSOCIATION_ADMIN`, `CLUB_ADMIN`)
+### 1. New: `src/pages/admin/VenuesManagement.tsx`
+- `max-w-7xl mx-auto` layout matching other admin pages
+- Title "Venues" + subtitle "Manage grounds and pitches"
+- **View-only badge**: Next to the title, show a `<Badge variant="secondary">View only</Badge>` when the user is CLUB_ADMIN (not SUPER_ADMIN or ASSOCIATION_ADMIN). Uses `useAdminScope` to determine role.
+- "Add Venue" button top-right (hidden for view-only users)
+- Table: Name, Suburb, Association, Pitches (count), Actions (edit/delete — hidden for view-only)
+- Add/Edit dialog: Name (required), Address, Suburb, State, Postcode, Phone, Email, Association dropdown (scoped), Available Times textarea, Notes textarea
+- Inline expandable pitches panel per row: list pitch name + notes; add/rename/delete controls (hidden for view-only)
+- **Delete safety check**: On delete, query pitches count and teams using this venue as home_venue_id. If dependencies exist, show AlertDialog listing affected items. On confirm: delete pitches → clear home_venue_id on teams → delete venue.
+- ASSOCIATION_ADMIN scoped to venues matching their association IDs
 
-### `pitches`
-- `id` uuid PK default `gen_random_uuid()`
-- `venue_id` uuid NOT NULL
-- `name` text NOT NULL
-- `notes` text
-- `created_at` timestamptz default `now()`
+### 2. Update: `src/App.tsx`
+- Import and add route `/admin/venues` → `VenuesManagement`
 
-RLS (same pattern):
-- SELECT: public, `true`
-- ALL: authenticated admins (`SUPER_ADMIN`, `ASSOCIATION_ADMIN`, `CLUB_ADMIN`)
+### 3. Update: `src/components/layout/AppLayout.tsx`
+- Add "Venues" nav item with `MapPin` icon after Fixtures in super_admin and association nav sets
 
-### `teams` — add column
-- `home_venue_id` uuid nullable
-
-### `games` — add columns
-- `host_club_id` uuid nullable
-- `venue_id` uuid nullable
-- `pitch_id` uuid nullable
-- `umpire_club_1_id` uuid nullable
-- `umpire_club_2_id` uuid nullable
-- `special_round_name` text nullable
-- `is_bye` boolean default false
-- `bye_team_id` uuid nullable
-
-## Migration
-
-Single migration with:
-1. CREATE TABLE venues + enable RLS + 2 policies
-2. CREATE TABLE pitches + enable RLS + 2 policies
-3. ALTER TABLE teams ADD home_venue_id
-4. ALTER TABLE games ADD 8 new columns
-
-No FK constraints (matching existing project pattern of no foreign keys). No UI changes.
+### 4. Update: `src/pages/admin/TeamsManagement.tsx`
+- Fetch venues, add Home Venue dropdown to edit/add dialog, save `home_venue_id`
 
