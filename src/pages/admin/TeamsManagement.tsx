@@ -65,16 +65,18 @@ const TeamsManagement = () => {
       teamsQuery = teamsQuery.in("club_id", scopedClubIds);
     }
 
-    const [teamsRes, clubsRes, associationsRes] = await Promise.all([
+    const [teamsRes, clubsRes, associationsRes, venuesRes] = await Promise.all([
       teamsQuery,
       supabase.from("clubs").select("*").order("name"),
       supabase.from("associations").select("*").order("name"),
+      supabase.from("venues").select("id, name").order("name"),
     ]);
 
     if (teamsRes.error) toast({ title: "Error", description: "Failed to load teams", variant: "destructive" });
     else setTeams(teamsRes.data || []);
     if (!clubsRes.error) setClubs(clubsRes.data || []);
     if (!associationsRes.error) setAssociations(associationsRes.data || []);
+    if (!venuesRes.error) setVenues(venuesRes.data || []);
     setLoading(false);
   };
 
@@ -104,12 +106,12 @@ const TeamsManagement = () => {
   const handleOpenDialog = (team?: TeamWithClub) => {
     if (team) {
       setEditingTeam(team);
-      setFormData({ name: team.name, club_id: team.club_id, age_group: team.age_group || "", division: team.division || "", gender: team.gender || "", team_type: (team as any).team_type || "" });
+      setFormData({ name: team.name, club_id: team.club_id, age_group: team.age_group || "", division: team.division || "", gender: team.gender || "", team_type: (team as any).team_type || "", home_venue_id: (team as any).home_venue_id || "" });
     } else {
       setEditingTeam(null);
       const defaultClubId = formClubs.length === 1 ? formClubs[0].id : "";
       const defaultName = defaultClubId ? formClubs.find(c => c.id === defaultClubId)?.name || "" : "";
-      setFormData({ name: defaultName, club_id: defaultClubId, age_group: "", division: "", gender: "", team_type: "" });
+      setFormData({ name: defaultName, club_id: defaultClubId, age_group: "", division: "", gender: "", team_type: "", home_venue_id: "" });
     }
     setDialogOpen(true);
   };
@@ -121,7 +123,7 @@ const TeamsManagement = () => {
     }
     setSaving(true);
     const autoName = formData.division && formData.gender ? `${formData.division} ${formData.gender}` : formData.name.trim();
-    const teamData = { name: autoName, club_id: formData.club_id, age_group: formData.age_group.trim() || null, division: formData.division.trim() || null, gender: formData.gender || null, team_type: formData.team_type || null } as any;
+    const teamData = { name: autoName, club_id: formData.club_id, age_group: formData.age_group.trim() || null, division: formData.division.trim() || null, gender: formData.gender || null, team_type: formData.team_type || null, home_venue_id: formData.home_venue_id || null } as any;
 
     if (editingTeam) {
       const { error } = await supabase.from("teams").update(teamData).eq("id", editingTeam.id);
