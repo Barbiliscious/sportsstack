@@ -30,6 +30,7 @@ import AddPlayer from "./pages/admin/AddPlayer";
 import BulkImport from "./pages/admin/BulkImport";
 import FixturesManagement from "./pages/admin/FixturesManagement";
 import FixtureImport from "./pages/admin/FixtureImport";
+import VenuesManagement from "./pages/admin/VenuesManagement";
 import Requests from "./pages/admin/Requests";
 
 // Entity Dashboards
@@ -91,6 +92,7 @@ const App = () => (
                       <Route path="/admin/bulk-import" element={<BulkImport />} />
                       <Route path="/admin/fixtures" element={<FixturesManagement />} />
                       <Route path="/admin/fixture-import" element={<FixtureImport />} />
+                      <Route path="/admin/venues" element={<VenuesManagement />} />
                       <Route path="/admin/requests" element={<Requests />} />
 
                       {/* Entity Dashboards */}

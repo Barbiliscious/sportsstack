@@ -47,7 +47,8 @@ const TeamsManagement = () => {
   const [editingTeam, setEditingTeam] = useState<TeamWithClub | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState<TeamWithClub | null>(null);
-  const [formData, setFormData] = useState({ name: "", club_id: "", age_group: "", division: "", gender: "", team_type: "" });
+  const [formData, setFormData] = useState({ name: "", club_id: "", age_group: "", division: "", gender: "", team_type: "", home_venue_id: "" });
+  const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
