@@ -127,7 +127,7 @@ function getField(row: Record<string, unknown>, ...keys: string[]): string {
 const BulkImport = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { loading: scopeLoading, isAnyAdmin, isSuperAdmin, scopedAssociationIds } = useAdminScope();
+  const { loading: scopeLoading, isAnyAdmin, isSuperAdmin, scopedAssociationIds, scopedClubIds, scopedTeamIds } = useAdminScope();
   const [submitting, setSubmitting] = useState(false);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -139,7 +139,12 @@ const BulkImport = () => {
   const [associations, setAssociations] = useState<{ id: string; name: string }[]>([]);
   const [clubs, setClubs] = useState<{ id: string; name: string; association_id: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string; club_id: string; division: string | null }[]>([]);
+
+  // Cascade state
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
+  const [selectedClubId, setSelectedClubId] = useState("");
+  const [selectedDivision, setSelectedDivision] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState("");
 
   useEffect(() => {
     if (!scopeLoading && !isAnyAdmin) navigate("/dashboard");
@@ -166,19 +171,68 @@ const BulkImport = () => {
     }
   }, [scopeLoading, isSuperAdmin, scopedAssociationIds]);
 
+  // Scoped available associations
   const availableAssociations = isSuperAdmin
     ? associations
     : associations.filter((a) => scopedAssociationIds.includes(a.id));
 
-  const assocClubs = useMemo(
-    () => clubs.filter((c) => c.association_id === selectedAssociationId),
-    [selectedAssociationId, clubs]
-  );
+  // Cascade filtering
+  const assocClubs = useMemo(() => {
+    const filtered = clubs.filter((c) => c.association_id === selectedAssociationId);
+    if (isSuperAdmin) return filtered;
+    // Non-super-admins: further filter by scope
+    if (scopedClubIds.length > 0) return filtered.filter((c) => scopedClubIds.includes(c.id));
+    if (scopedAssociationIds.includes(selectedAssociationId)) return filtered;
+    return filtered.filter((c) => teams.some((t) => t.club_id === c.id && scopedTeamIds.includes(t.id)));
+  }, [selectedAssociationId, clubs, isSuperAdmin, scopedClubIds, scopedAssociationIds, scopedTeamIds, teams]);
 
   const assocTeams = useMemo(() => {
     const assocClubIds = new Set(assocClubs.map((c) => c.id));
-    return teams.filter((t) => assocClubIds.has(t.club_id));
-  }, [assocClubs, teams]);
+    let filtered = teams.filter((t) => assocClubIds.has(t.club_id));
+    if (!isSuperAdmin && scopedTeamIds.length > 0 && !scopedAssociationIds.includes(selectedAssociationId) && scopedClubIds.length === 0) {
+      filtered = filtered.filter((t) => scopedTeamIds.includes(t.id));
+    }
+    return filtered;
+  }, [assocClubs, teams, isSuperAdmin, scopedTeamIds, scopedAssociationIds, selectedAssociationId, scopedClubIds]);
+
+  // Filtered clubs for cascade (by selected association)
+  const cascadeClubs = assocClubs;
+
+  // Filtered divisions for cascade (by selected club)
+  const cascadeDivisions = useMemo(() => {
+    let filtered = assocTeams;
+    if (selectedClubId) filtered = filtered.filter((t) => t.club_id === selectedClubId);
+    const divs = new Set<string>();
+    filtered.forEach((t) => { if (t.division) divs.add(t.division); });
+    return Array.from(divs).sort();
+  }, [assocTeams, selectedClubId]);
+
+  // Filtered teams for cascade (by selected club + division)
+  const cascadeTeams = useMemo(() => {
+    let filtered = assocTeams;
+    if (selectedClubId) filtered = filtered.filter((t) => t.club_id === selectedClubId);
+    if (selectedDivision) filtered = filtered.filter((t) => t.division === selectedDivision);
+    return filtered;
+  }, [assocTeams, selectedClubId, selectedDivision]);
+
+  // Cascade change handlers
+  const handleAssociationChange = (id: string) => {
+    setSelectedAssociationId(id);
+    setSelectedClubId("");
+    setSelectedDivision("");
+    setSelectedTeamId("");
+  };
+
+  const handleClubChange = (id: string) => {
+    setSelectedClubId(id);
+    setSelectedDivision("");
+    setSelectedTeamId("");
+  };
+
+  const handleDivisionChange = (d: string) => {
+    setSelectedDivision(d);
+    setSelectedTeamId("");
+  };
 
   const teamLookup = useMemo(() => {
     if (!selectedAssociationId) return new Map<string, string>();
@@ -193,15 +247,23 @@ const BulkImport = () => {
     return map;
   }, [selectedAssociationId, assocClubs, assocTeams]);
 
+  // Build scope boundary sets for validation
+  const scopeTeamIds = useMemo(() => {
+    return new Set(cascadeTeams.map((t) => t.id));
+  }, [cascadeTeams]);
+
+  const scopeClubIds = useMemo(() => {
+    if (selectedClubId) return new Set([selectedClubId]);
+    return new Set(assocClubs.map((c) => c.id));
+  }, [selectedClubId, assocClubs]);
+
   const validateRows = useCallback(
     (parsed: Omit<ParsedRow, "errors" | "team_id">[]): ParsedRow[] => {
       return parsed.map((r) => {
         const errors: string[] = [];
         if (!r.first_name.trim()) errors.push("First name required");
         if (!r.last_name.trim()) errors.push("Last name required");
-        // Fix 1: email no longer required — edge function auto-generates mock emails
         if (r.gender && !GENDER_OPTIONS.includes(r.gender)) errors.push(`Gender must be one of: ${GENDER_OPTIONS.join(", ")}`);
-        // Fix 5: only validate role if super admin
         if (isSuperAdmin && r.role && !ROLE_OPTIONS.includes(r.role.toUpperCase())) errors.push(`Role must be one of: ${ROLE_OPTIONS.join(", ")}`);
         if (r.position && !POSITION_OPTIONS.includes(r.position.toUpperCase())) errors.push(`Position must be one of: ${POSITION_OPTIONS.join(", ")}`);
 
@@ -223,10 +285,27 @@ const BulkImport = () => {
           errors.push("Both Club and Division required");
         }
 
+        // Scope enforcement: check resolved team is within cascade selection
+        if (team_id && errors.length === 0) {
+          if (!scopeTeamIds.has(team_id)) {
+            const team = teams.find((t) => t.id === team_id);
+            const club = team ? clubs.find((c) => c.id === team.club_id) : null;
+            const scopeDesc = selectedTeamId
+              ? `team '${cascadeTeams.find((t) => t.id === selectedTeamId)?.name || ""}'`
+              : selectedDivision
+              ? `division '${selectedDivision}'`
+              : selectedClubId
+              ? `club '${cascadeClubs.find((c) => c.id === selectedClubId)?.name || ""}'`
+              : "selected scope";
+            errors.push(`Row outside selected scope (${scopeDesc}). Row resolves to ${club?.name || "unknown club"} / ${team?.division || "unknown division"}.`);
+            team_id = null;
+          }
+        }
+
         return { ...r, errors, team_id };
       });
     },
-    [teamLookup, assocClubs, isSuperAdmin]
+    [teamLookup, assocClubs, isSuperAdmin, scopeTeamIds, selectedTeamId, selectedDivision, selectedClubId, cascadeTeams, cascadeClubs, teams, clubs]
   );
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -280,16 +359,15 @@ const BulkImport = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  // Re-validate when association changes
+  // Re-validate when scope changes
   useEffect(() => {
     if (rows.length > 0) {
       setRows((prev) =>
         validateRows(prev.map(({ errors, team_id, ...rest }) => rest))
       );
     }
-  }, [teamLookup]);
+  }, [teamLookup, scopeTeamIds]);
 
-  // Inline edit a cell
   const updateRow = (rowNum: number, field: keyof Omit<ParsedRow, "errors" | "team_id" | "row_number">, value: string) => {
     setRows((prev) => {
       const updated = prev.map((r) => {
@@ -302,7 +380,6 @@ const BulkImport = () => {
       });
       return validateRows(updated.map(({ errors, team_id, ...rest }) => rest));
     });
-    // Reset importResult when user edits a failed row (Fix 3)
     setImportResult(null);
   };
 
@@ -339,7 +416,6 @@ const BulkImport = () => {
           is_primary_team: r.is_primary_team,
           jersey_number: r.jersey_number ? parseInt(r.jersey_number) : null,
           position: r.position || null,
-          // Fix 5: strip role for non-super-admins
           role: isSuperAdmin ? (r.role || null) : null,
           notes: r.notes || null,
           row_number: r.row_number,
@@ -360,15 +436,12 @@ const BulkImport = () => {
     const result = data as ImportResult;
     setImportResult(result);
 
-    // Fix 3: Keep only failed rows in the preview
     if (result.errors && result.errors.length > 0) {
       const failedRowNumbers = new Set(result.errors.map((e) => e.row));
       setRows((prev) => {
-        // Keep rows that had client-side errors (weren't submitted) + server-side failures
         const kept = prev.filter(
           (r) => r.errors.length > 0 || failedRowNumbers.has(r.row_number)
         );
-        // Annotate server-side errors onto the kept rows
         return kept.map((r) => {
           const serverError = result.errors.find((e) => e.row === r.row_number);
           if (serverError && r.errors.length === 0) {
@@ -378,7 +451,6 @@ const BulkImport = () => {
         });
       });
     } else {
-      // All succeeded — clear rows
       setRows([]);
     }
 
@@ -389,7 +461,6 @@ const BulkImport = () => {
   };
 
   const downloadTemplate = () => {
-    // Fix 5: exclude role column for non-super-admins
     const headers = [
       "first_name", "last_name", "email", "phone", "suburb",
       "date_of_birth", "gender", "hockey_vic_number",
@@ -399,7 +470,20 @@ const BulkImport = () => {
       ...(isSuperAdmin ? ["role"] : []),
       "notes",
     ];
-    const ws = XLSX.utils.aoa_to_sheet([headers]);
+
+    // Pre-fill row 2 with cascade values
+    const selectedAssocName = associations.find((a) => a.id === selectedAssociationId)?.name || "";
+    const selectedClubName = cascadeClubs.find((c) => c.id === selectedClubId)?.name || "";
+    const selectedTeamName = cascadeTeams.find((t) => t.id === selectedTeamId)?.name || "";
+    const prefillRow = headers.map((h) => {
+      if (h === "association") return selectedAssocName;
+      if (h === "club") return selectedClubName;
+      if (h === "competition") return selectedDivision;
+      if (h === "team_name") return selectedTeamName;
+      return "";
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, prefillRow]);
     ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
 
     if (!ws["!dataValidation"]) (ws as any)["!dataValidation"] = [];
@@ -425,33 +509,38 @@ const BulkImport = () => {
     if (positionCol >= 0) addValidation(positionCol, POSITION_OPTIONS);
     if (roleCol >= 0) addValidation(roleCol, ROLE_OPTIONS);
 
-    if (assocClubs.length > 0) {
+    if (cascadeClubs.length > 0) {
       const clubCol = headers.indexOf("club");
-      if (clubCol >= 0) addValidation(clubCol, assocClubs.map((c) => c.name));
+      if (clubCol >= 0) addValidation(clubCol, cascadeClubs.map((c) => c.name));
     }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Players");
 
-    // Fix 4: Add "Allowed Values" reference sheet
-    const refData: string[][] = [];
+    // Allowed Values reference sheet — scoped to cascade
     const refHeaders: string[] = ["Gender", "Position", "Is Primary Team"];
     if (isSuperAdmin) refHeaders.push("Role");
     refHeaders.push("Club", "Division");
 
-    // Build columns of values
+    // Scoped values
+    const scopedClubNames = selectedClubId
+      ? [cascadeClubs.find((c) => c.id === selectedClubId)?.name || ""]
+      : cascadeClubs.map((c) => c.name);
+    const scopedDivisions = selectedDivision
+      ? [selectedDivision]
+      : cascadeDivisions;
+
     const colValues: string[][] = [
       GENDER_OPTIONS,
       POSITION_OPTIONS,
       YES_NO_OPTIONS,
     ];
     if (isSuperAdmin) colValues.push(ROLE_OPTIONS);
-    colValues.push(assocClubs.map((c) => c.name));
-    const divisionNames = [...new Set(assocTeams.filter((t) => t.division).map((t) => t.division!))];
-    colValues.push(divisionNames);
+    colValues.push(scopedClubNames);
+    colValues.push(scopedDivisions);
 
     const maxLen = Math.max(...colValues.map((v) => v.length));
-    refData.push(refHeaders);
+    const refData: string[][] = [refHeaders];
     for (let i = 0; i < maxLen; i++) {
       refData.push(refHeaders.map((_, ci) => colValues[ci]?.[i] || ""));
     }
@@ -504,7 +593,6 @@ const BulkImport = () => {
             <p className="text-muted-foreground">Upload a spreadsheet to create multiple players at once</p>
           </div>
         </div>
-        {/* Fix 2: Clear All Test Data button */}
         {isSuperAdmin && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -551,32 +639,85 @@ const BulkImport = () => {
         )}
       </div>
 
-      {/* Association Scope */}
+      {/* Import Scope — Cascade Selector */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Import Scope</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2 max-w-sm">
-            <Label>Association</Label>
-            <Select
-              value={selectedAssociationId}
-              onValueChange={setSelectedAssociationId}
-              disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select association" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableAssociations.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Club and Division columns will be matched to teams within this association.
-            </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Association</Label>
+              <Select
+                value={selectedAssociationId}
+                onValueChange={handleAssociationChange}
+                disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select association" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableAssociations.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Club</Label>
+              <Select
+                value={selectedClubId}
+                onValueChange={handleClubChange}
+                disabled={!selectedAssociationId || cascadeClubs.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All clubs" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cascadeClubs.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Division</Label>
+              <Select
+                value={selectedDivision}
+                onValueChange={handleDivisionChange}
+                disabled={cascadeDivisions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All divisions" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cascadeDivisions.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Team</Label>
+              <Select
+                value={selectedTeamId}
+                onValueChange={setSelectedTeamId}
+                disabled={cascadeTeams.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All teams" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cascadeTeams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Rows outside the selected scope will be rejected. Association is the minimum required selection.
+          </p>
         </CardContent>
       </Card>
 
@@ -614,7 +755,7 @@ const BulkImport = () => {
             )}
           </div>
           <div className="text-xs text-muted-foreground space-y-1">
-            <p>Template includes dropdown lists for: <span className="font-medium">Gender, Position, Is Primary Team</span>{isSuperAdmin && <>, <span className="font-medium">Role</span></>}{assocClubs.length > 0 && <>, <span className="font-medium">Club</span></>}</p>
+            <p>Template includes dropdown lists for: <span className="font-medium">Gender, Position, Is Primary Team</span>{isSuperAdmin && <>, <span className="font-medium">Role</span></>}{cascadeClubs.length > 0 && <>, <span className="font-medium">Club</span></>}</p>
             <p>Dates can be DD/MM/YYYY format. Email is optional — mock emails will be generated if left blank.</p>
             <p>Errors can be corrected inline in the preview below. The template also includes an "Allowed Values" reference sheet.</p>
           </div>
@@ -660,7 +801,6 @@ const BulkImport = () => {
                     <TableHead>Primary</TableHead>
                     <TableHead>Jersey</TableHead>
                     <TableHead>Position</TableHead>
-                    {/* Fix 5: hide Role column for non-super-admins */}
                     {isSuperAdmin && <TableHead>Role</TableHead>}
                     <TableHead>EC Name</TableHead>
                     <TableHead>EC Phone</TableHead>
@@ -694,13 +834,13 @@ const BulkImport = () => {
                       <TableCell className="text-xs whitespace-nowrap">{formatDateDisplay(r.date_of_birth)}</TableCell>
                       <TableCell className="text-xs">{r.hockey_vic_number}</TableCell>
                       <TableCell>
-                        {assocClubs.length > 0 ? (
+                        {cascadeClubs.length > 0 ? (
                           <Select value={r.club_name || undefined} onValueChange={(v) => updateRow(r.row_number, "club_name", v)}>
                             <SelectTrigger className="h-7 w-28 text-xs border-0 p-1">
                               <SelectValue placeholder="—" />
                             </SelectTrigger>
                             <SelectContent>
-                              {assocClubs.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                              {cascadeClubs.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         ) : (
@@ -721,7 +861,6 @@ const BulkImport = () => {
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      {/* Fix 5: hide Role column for non-super-admins */}
                       {isSuperAdmin && (
                         <TableCell>
                           <Select value={r.role || undefined} onValueChange={(v) => updateRow(r.row_number, "role", v)}>
@@ -795,7 +934,7 @@ const BulkImport = () => {
         </Card>
       )}
 
-      {/* Submit — Fix 3: show when rows remain (including failed rows after import) */}
+      {/* Submit */}
       {rows.length > 0 && validRows.length > 0 && (
         <Button
           className="w-full"
