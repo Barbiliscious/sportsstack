@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTestRole } from "@/contexts/TestRoleContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -28,13 +29,14 @@ interface UseUserRoleReturn {
 
 export function useUserRole(): UseUserRoleReturn {
   const { user } = useAuth();
-  const [roles, setRoles] = useState<AppRole[]>([]);
+  const { testRole } = useTestRole();
+  const [dbRoles, setDbRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchRoles = async () => {
     if (!user) {
-      setRoles([]);
+      setDbRoles([]);
       setLoading(false);
       return;
     }
@@ -53,11 +55,11 @@ export function useUserRole(): UseUserRoleReturn {
       }
 
       const userRoles = data?.map((r) => r.role) || [];
-      setRoles(userRoles);
+      setDbRoles(userRoles);
     } catch (err) {
       console.error("Error fetching user roles:", err);
       setError(err instanceof Error ? err : new Error("Failed to fetch roles"));
-      setRoles([]);
+      setDbRoles([]);
     } finally {
       setLoading(false);
     }
@@ -66,6 +68,11 @@ export function useUserRole(): UseUserRoleReturn {
   useEffect(() => {
     fetchRoles();
   }, [user?.id]);
+
+  const roles = useMemo(() => {
+    const isTesting = import.meta.env.DEV && import.meta.env.VITE_BYPASS_AUTH === "true";
+    return isTesting ? Array.from(new Set([testRole as AppRole, ...dbRoles])) : dbRoles;
+  }, [testRole, dbRoles]);
 
   // Get the highest role based on hierarchy
   const highestRole = roles.length > 0

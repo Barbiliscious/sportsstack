@@ -58,9 +58,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [associations, setAssociations] = useState<Association[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedAssociationId, setSelectedAssociationId] = useState("");
-  const [selectedClubId, setSelectedClubId] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedAssociationId, setSelectedAssociationId] = useState(() => localStorage.getItem("selectedAssociationId") || "");
+  const [selectedClubId, setSelectedClubId] = useState(() => localStorage.getItem("selectedClubId") || "");
+  const [selectedTeamId, setSelectedTeamId] = useState(() => localStorage.getItem("selectedTeamId") || "");
   const [selectedDivision, setSelectedDivision] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -109,20 +109,39 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   const handleAssociationChange = (id: string) => {
     setSelectedAssociationId(id);
+    if (id) localStorage.setItem("selectedAssociationId", id);
+    else localStorage.removeItem("selectedAssociationId");
+    
     setSelectedClubId("");
+    localStorage.removeItem("selectedClubId");
+    
     setSelectedTeamId("");
+    localStorage.removeItem("selectedTeamId");
+    
     setSelectedDivision("");
   };
 
   const handleClubChange = (id: string) => {
     setSelectedClubId(id);
+    if (id) localStorage.setItem("selectedClubId", id);
+    else localStorage.removeItem("selectedClubId");
+    
     setSelectedTeamId("");
+    localStorage.removeItem("selectedTeamId");
+    
     setSelectedDivision("");
   };
 
   const handleDivisionChange = (d: string) => {
     setSelectedDivision(d);
     setSelectedTeamId("");
+    localStorage.removeItem("selectedTeamId");
+  };
+
+  const handleTeamChange = (id: string) => {
+    setSelectedTeamId(id);
+    if (id) localStorage.setItem("selectedTeamId", id);
+    else localStorage.removeItem("selectedTeamId");
   };
 
   const selectedAssociation = associations.find(a => a.id === selectedAssociationId);
@@ -141,7 +160,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         selectedDivision,
         setSelectedAssociationId: handleAssociationChange,
         setSelectedClubId: handleClubChange,
-        setSelectedTeamId,
+        setSelectedTeamId: handleTeamChange,
         setSelectedDivision: handleDivisionChange,
         filteredClubs,
         filteredTeams,

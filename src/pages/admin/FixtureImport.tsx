@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, XCircle, Loader2, Download,
+  ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, XCircle, Loader2, Download, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminScope } from "@/hooks/useAdminScope";
@@ -24,18 +24,26 @@ import * as XLSX from "xlsx";
 
 interface ParsedFixture {
   row_number: number;
-  round_number: string;
+  round_number: number | null;
+  round_name: string;
   date: string;
   time: string;
+  venue: string;
+  pitch: string;
+  grade: string;
   home_team: string;
   away_team: string;
-  location: string;
-  competition: string;
-  notes: string;
+  umpire_1: string;
+  umpire_2: string;
+  is_bye: boolean;
+  
+  // Resolved
   errors: string[];
   team_id: string | null;
   opponent_name: string;
-  is_home: boolean;
+  resolved_venue: string;
+  resolved_grade: string;
+  bye_team_id: string | null;
 }
 
 function parseDate(val: unknown): string {
@@ -44,27 +52,19 @@ function parseDate(val: unknown): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   if (str.includes("/")) {
     const parts = str.split("/");
-    if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+    if (parts.length === 3) {
+      const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+      return `${year}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+    }
   }
   const num = Number(val);
   if (!isNaN(num) && num > 1000 && num < 100000) {
     const d = new Date((num - 25569) * 86400 * 1000);
     if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   return str;
-}
-
-function formatDateDisplay(iso: string): string {
-  if (!iso) return "";
-  const p = iso.split("-");
-  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
-}
-
-function getField(row: Record<string, unknown>, ...keys: string[]): string {
-  for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") return String(row[k]).trim();
-  }
-  return "";
 }
 
 function parseTime(val: unknown): string {
@@ -74,25 +74,26 @@ function parseTime(val: unknown): string {
     const totalMinutes = Math.round(num * 24 * 60);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    const period = hours >= 12 ? "PM" : "AM";
-    const h12 = hours % 12 || 12;
-    return `${h12}:${String(minutes).padStart(2, "0")} ${period}`;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
-  return String(val).trim();
-}
-
-function timeDisplayTo24h(display: string): string {
-  if (!display) return "";
-  const match = display.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const str = String(val).trim();
+  const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
   if (match) {
     let h = parseInt(match[1]);
     const m = match[2];
-    const period = match[3].toUpperCase();
+    const period = match[3]?.toUpperCase();
     if (period === "PM" && h !== 12) h += 12;
     if (period === "AM" && h === 12) h = 0;
     return `${String(h).padStart(2, "0")}:${m}`;
   }
-  if (/^\d{1,2}:\d{2}$/.test(display)) return display;
+  if (/^\d{1,2}:\d{2}$/.test(str)) return str;
+  return str;
+}
+
+function getField(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") return String(row[k]).trim();
+  }
   return "";
 }
 
@@ -100,37 +101,43 @@ const FixtureImport = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { loading: scopeLoading, isAnyAdmin, isSuperAdmin, scopedAssociationIds, scopedClubIds, scopedTeamIds: adminScopedTeamIds } = useAdminScope();
+  
   const [submitting, setSubmitting] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [fileKey, setFileKey] = useState(0);
   const [rows, setRows] = useState<ParsedFixture[]>([]);
   const [importDone, setImportDone] = useState(false);
-  const [correctionDialog, setCorrectionDialog] = useState<{ originalName: string; validTeams: string[] } | null>(null);
 
   // Reference data
   const [associations, setAssociations] = useState<{ id: string; name: string }[]>([]);
   const [clubs, setClubs] = useState<{ id: string; name: string; association_id: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string; club_id: string; division: string | null }[]>([]);
+  const [venues, setVenues] = useState<{ id: string; name: string; association_id: string | null }[]>([]);
+  const [pitches, setPitches] = useState<{ id: string; name: string; venue_id: string }[]>([]);
 
   // Cascade state
   const [selectedAssociationId, setSelectedAssociationId] = useState("");
   const [selectedClubId, setSelectedClubId] = useState("");
   const [selectedDivision, setSelectedDivision] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState("");
 
   useEffect(() => {
-    if (!scopeLoading && !isAnyAdmin) navigate("/dashboard");
+    if (!scopeLoading && !isAnyAdmin) navigate("/admin");
   }, [scopeLoading, isAnyAdmin, navigate]);
 
   useEffect(() => {
     const load = async () => {
-      const [aRes, cRes, tRes] = await Promise.all([
+      const [aRes, cRes, tRes, vRes, pRes] = await Promise.all([
         supabase.from("associations").select("id, name").order("name"),
         supabase.from("clubs").select("id, name, association_id").order("name"),
         supabase.from("teams").select("id, name, club_id, division").order("name"),
+        supabase.from("venues").select("id, name, association_id").order("name"),
+        supabase.from("pitches").select("id, name, venue_id").order("name"),
       ]);
       setAssociations(aRes.data || []);
       setClubs(cRes.data || []);
       setTeams(tRes.data || []);
+      setVenues(vRes.data || []);
+      setPitches(pRes.data || []);
     };
     load();
   }, []);
@@ -145,7 +152,7 @@ const FixtureImport = () => {
     ? associations
     : associations.filter((a) => scopedAssociationIds.includes(a.id));
 
-  // Cascade filtering
+  // Cascade filtering for Clubs
   const assocClubs = useMemo(() => {
     const filtered = clubs.filter((c) => c.association_id === selectedAssociationId);
     if (isSuperAdmin) return filtered;
@@ -154,16 +161,14 @@ const FixtureImport = () => {
     return filtered.filter((c) => teams.some((t) => t.club_id === c.id && adminScopedTeamIds.includes(t.id)));
   }, [selectedAssociationId, clubs, isSuperAdmin, scopedClubIds, scopedAssociationIds, adminScopedTeamIds, teams]);
 
-  const assocTeams = useMemo(() => {
-    const clubIds = new Set(assocClubs.map((c) => c.id));
-    let filtered = teams.filter((t) => clubIds.has(t.club_id));
-    if (!isSuperAdmin && adminScopedTeamIds.length > 0 && !scopedAssociationIds.includes(selectedAssociationId) && scopedClubIds.length === 0) {
-      filtered = filtered.filter((t) => adminScopedTeamIds.includes(t.id));
-    }
-    return filtered;
-  }, [assocClubs, teams, isSuperAdmin, adminScopedTeamIds, scopedAssociationIds, selectedAssociationId, scopedClubIds]);
-
   const cascadeClubs = assocClubs;
+
+  // Teams in the association (for validation mapping)
+  const assocTeams = useMemo(() => {
+    const allAssocClubs = clubs.filter((c) => c.association_id === selectedAssociationId);
+    const clubIds = new Set(allAssocClubs.map((c) => c.id));
+    return teams.filter((t) => clubIds.has(t.club_id));
+  }, [clubs, teams, selectedAssociationId]);
 
   const cascadeDivisions = useMemo(() => {
     let filtered = assocTeams;
@@ -173,96 +178,118 @@ const FixtureImport = () => {
     return Array.from(divs).sort();
   }, [assocTeams, selectedClubId]);
 
-  const cascadeTeams = useMemo(() => {
-    let filtered = assocTeams;
-    if (selectedClubId) filtered = filtered.filter((t) => t.club_id === selectedClubId);
-    if (selectedDivision) filtered = filtered.filter((t) => t.division === selectedDivision);
-    return filtered;
-  }, [assocTeams, selectedClubId, selectedDivision]);
-
-  const handleAssociationChange = (id: string) => {
-    setSelectedAssociationId(id);
-    setSelectedClubId("");
-    setSelectedDivision("");
-    setSelectedTeamId("");
-  };
-
-  const handleClubChange = (id: string) => {
-    setSelectedClubId(id);
-    setSelectedDivision("");
-    setSelectedTeamId("");
-  };
-
-  const handleDivisionChange = (d: string) => {
-    setSelectedDivision(d);
-    setSelectedTeamId("");
-  };
-
-  // Team name lookup scoped to cascade
-  const teamNameLookup = useMemo(() => {
-    const map = new Map<string, { id: string; club_name: string }>();
-    for (const t of cascadeTeams) {
-      const club = assocClubs.find((c) => c.id === t.club_id);
-      map.set(t.name.toLowerCase().trim(), { id: t.id, club_name: club?.name || "" });
-    }
-    return map;
-  }, [cascadeTeams, assocClubs]);
-
-  // Full association-level team lookup for matching (scope enforcement happens separately)
+  // Full association-level team lookup for matching
   const allAssocTeamLookup = useMemo(() => {
-    const map = new Map<string, { id: string; club_name: string }>();
+    const map = new Map<string, { id: string; name: string }>();
     for (const t of assocTeams) {
-      const club = assocClubs.find((c) => c.id === t.club_id);
-      map.set(t.name.toLowerCase().trim(), { id: t.id, club_name: club?.name || "" });
+      map.set(t.name.toLowerCase().trim(), { id: t.id, name: t.name });
     }
     return map;
-  }, [assocTeams, assocClubs]);
+  }, [assocTeams]);
 
-  const scopeTeamIds = useMemo(() => new Set(cascadeTeams.map((t) => t.id)), [cascadeTeams]);
+  // Allowed divisions
+  const allAssocDivisions = useMemo(() => {
+    const s = new Set<string>();
+    assocTeams.forEach(t => { if (t.division) s.add(t.division); });
+    return Array.from(s);
+  }, [assocTeams]);
 
-  const validate = useCallback((parsed: Omit<ParsedFixture, "errors" | "team_id" | "opponent_name" | "is_home">[]): ParsedFixture[] => {
+  // Allowed venues
+  const allVenuesLower = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of venues) {
+      map.set(v.name.toLowerCase().trim(), v.name);
+    }
+    return map;
+  }, [venues]);
+
+  const validate = useCallback((parsed: Omit<ParsedFixture, "errors" | "team_id" | "opponent_name" | "resolved_venue" | "resolved_grade" | "bye_team_id">[]): ParsedFixture[] => {
     return parsed.map((r) => {
       const errors: string[] = [];
-      if (!r.date) errors.push("Date required");
-      if (!r.home_team && !r.away_team) errors.push("Home team and away team required");
 
-      const homeMatch = allAssocTeamLookup.get(r.home_team.toLowerCase().trim());
-      const awayMatch = allAssocTeamLookup.get(r.away_team.toLowerCase().trim());
+      // Validations
+      // Bye inference
+      const is_bye = r.home_team && !r.away_team;
+      r.is_bye = !!is_bye;
+
+      // Validations
+      if (!r.date) errors.push("Date required");
+      if (!is_bye && !r.time) errors.push("Time required");
+      if (!r.home_team) errors.push("Home team required");
 
       let team_id: string | null = null;
       let opponent_name = "";
-      let is_home = true;
+      let bye_team_id: string | null = null;
+      let resolved_venue = r.venue;
+      let resolved_grade = r.grade;
 
-      if (homeMatch) {
-        team_id = homeMatch.id;
-        opponent_name = r.away_team || "TBA";
-        is_home = true;
-      } else if (awayMatch) {
-        team_id = awayMatch.id;
-        opponent_name = r.home_team || "TBA";
-        is_home = false;
-      } else {
-        errors.push(`Neither '${r.home_team}' nor '${r.away_team}' found as a team in this association`);
+      // Handle Home Team
+      if (r.home_team) {
+        const homeMatch = allAssocTeamLookup.get(r.home_team.toLowerCase().trim());
+        if (homeMatch) {
+          team_id = homeMatch.id;
+          if (is_bye) {
+            bye_team_id = homeMatch.id;
+            opponent_name = "BYE";
+          }
+        } else {
+          errors.push(`Home team '${r.home_team}' not found`);
+        }
       }
 
-      // Scope enforcement
-      if (team_id && errors.length === 0 && !scopeTeamIds.has(team_id)) {
-        const team = teams.find((t) => t.id === team_id);
-        const club = team ? clubs.find((c) => c.id === team.club_id) : null;
-        const scopeDesc = selectedTeamId
-          ? `team '${cascadeTeams.find((t) => t.id === selectedTeamId)?.name || ""}'`
-          : selectedDivision
-          ? `division '${selectedDivision}'`
-          : selectedClubId
-          ? `club '${cascadeClubs.find((c) => c.id === selectedClubId)?.name || ""}'`
-          : "selected scope";
-        errors.push(`Row outside selected scope (${scopeDesc}). Resolved to ${club?.name || "unknown"} / ${team?.division || "unknown"}.`);
-        team_id = null;
+      // Handle Away Team Validation
+      if (!is_bye) {
+        if (!r.venue) errors.push("Venue required");
+        if (r.away_team) {
+          const awayMatch = allAssocTeamLookup.get(r.away_team.toLowerCase().trim());
+          if (!awayMatch) {
+            errors.push(`Away team '${r.away_team}' not found`);
+          } else {
+            opponent_name = awayMatch.name;
+          }
+        } else {
+          errors.push("Away team required");
+        }
       }
 
-      return { ...r, errors, team_id, opponent_name, is_home };
+      // Venue match
+      if (r.venue) {
+        const vMatch = allVenuesLower.get(r.venue.toLowerCase().trim());
+        if (vMatch) resolved_venue = vMatch;
+        else errors.push(`Venue '${r.venue}' not found in venues table`);
+      }
+
+      // Pitch/venue conflict check
+      if (r.pitch && r.venue) {
+        const matchedVenue = venues.find(v => v.name.toLowerCase().trim() === r.venue.toLowerCase().trim());
+        if (matchedVenue) {
+          const pitchBelongsToVenue = pitches.some(
+            p => p.venue_id === matchedVenue.id && p.name.toLowerCase().trim() === r.pitch.toLowerCase().trim()
+          );
+          if (!pitchBelongsToVenue) {
+            errors.push(`Pitch '${r.pitch}' does not belong to venue '${r.venue}'`);
+          }
+        }
+      }
+
+      // Grade match
+      if (r.grade) {
+        const dMatch = allAssocDivisions.find(d => d.toLowerCase().trim() === r.grade.toLowerCase().trim());
+        if (dMatch) resolved_grade = dMatch;
+        else errors.push(`Grade '${r.grade}' not found in teams divisions`);
+      }
+
+      return { 
+        ...r, 
+        errors, 
+        team_id, 
+        opponent_name, 
+        resolved_venue, 
+        resolved_grade, 
+        bye_team_id 
+      };
     });
-  }, [allAssocTeamLookup, scopeTeamIds, selectedTeamId, selectedDivision, selectedClubId, cascadeTeams, cascadeClubs, teams, clubs]);
+  }, [allAssocTeamLookup, allVenuesLower, allAssocDivisions, venues, pitches]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -276,22 +303,38 @@ const FixtureImport = () => {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        // Support the 3-row layout where row 1 might be notes
+        let headerRow = 0;
+        const A1 = sheet["A1"]?.v != null ? String(sheet["A1"].v).trim() : "";
+        const A2 = sheet["A2"]?.v != null ? String(sheet["A2"].v).trim() : "";
+        if (A1 === "" && A2.startsWith("round_number")) {
+          headerRow = 1;
+        }
 
-        const parsed = json.map((row, i) => ({
-          row_number: i + 2,
-          round_number: getField(row, "round_number", "Round", "Rd"),
-          date: parseDate(row["date"] || row["Date"] || row["game_date"] || ""),
-          time: parseTime(row["time"] || row["Time"] || ""),
-          home_team: getField(row, "home_team", "Home Team", "Home"),
-          away_team: getField(row, "away_team", "Away Team", "Away"),
-          location: getField(row, "location", "Location", "Venue"),
-          competition: getField(row, "competition", "Competition", "Comp"),
-          notes: getField(row, "notes", "Notes"),
-        }));
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", range: headerRow });
+
+        const parsed = json.map((row, i) => {
+          const roundRaw = getField(row, "round_number *", "round_number", "Round", "Rd");
+          return {
+            row_number: headerRow + i + 2,
+            round_number: roundRaw ? parseInt(roundRaw) : null,
+            round_name: getField(row, "round_name (optional)", "round_name", "Round Name", "Event"),
+            date: parseDate(row["date *"] || row["date"] || row["Date"] || ""),
+            time: parseTime(row["time *"] || row["time"] || row["Time"] || ""),
+            venue: getField(row, "venue *", "venue", "Venue", "Location"),
+            pitch: getField(row, "pitch *", "pitch", "Pitch", "Field"),
+            grade: getField(row, "grade *", "grade", "Grade", "Division"),
+            home_team: getField(row, "home_team *", "home_team", "Home Team", "Home"),
+            away_team: getField(row, "away_team (Leave blank for bye)", "away_team", "Away Team", "Away"),
+            umpire_1: getField(row, "umpire_1", "Umpire 1", "Umpire1"),
+            umpire_2: getField(row, "umpire_2", "Umpire 2", "Umpire2"),
+            is_bye: false, // Calculated in validate
+          };
+        });
 
         setRows(validate(parsed));
-      } catch {
+      } catch (err) {
+        console.error(err);
         toast({ title: "Parse Error", description: "Could not read the spreadsheet.", variant: "destructive" });
       }
     };
@@ -300,9 +343,9 @@ const FixtureImport = () => {
 
   useEffect(() => {
     if (rows.length > 0) {
-      setRows((prev) => validate(prev.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest)));
+      setRows((prev) => validate(prev.map(({ errors, team_id, opponent_name, resolved_venue, resolved_grade, bye_team_id, ...rest }) => rest)));
     }
-  }, [allAssocTeamLookup, scopeTeamIds]);
+  }, [selectedAssociationId, allAssocTeamLookup, validate]);
 
   const validRows = rows.filter((r) => r.errors.length === 0);
   const errorRows = rows.filter((r) => r.errors.length > 0);
@@ -312,20 +355,25 @@ const FixtureImport = () => {
     setSubmitting(true);
 
     const inserts = validRows.map((r) => {
-      const time24 = timeDisplayTo24h(r.time);
       let gameDate = r.date;
-      if (time24) gameDate += `T${time24}:00`;
-      else gameDate += "T00:00:00";
-
+      if (r.time) gameDate += `T${r.time}:00`;
+      else if (gameDate) gameDate += "T00:00:00";
+      
       return {
-        team_id: r.team_id!,
-        opponent_name: r.opponent_name,
-        game_date: gameDate,
-        is_home: r.is_home,
-        location: r.location || null,
-        round_number: r.round_number ? parseInt(r.round_number) : null,
-        notes: r.notes || null,
+        team_id: r.team_id,
+        opponent_name: r.opponent_name || null,
+        game_date: gameDate || null,
+        location: r.resolved_venue || null,
+        pitch: r.pitch || null,
+        is_home: true,
         status: "scheduled",
+        round_number: r.round_number,
+        round_name: r.round_name || null,
+        grade: r.resolved_grade || null,
+        umpire_club_1: r.umpire_1 || null,
+        umpire_club_2: r.umpire_2 || null,
+        is_bye: r.is_bye,
+        bye_team_id: r.bye_team_id,
       };
     });
 
@@ -338,36 +386,60 @@ const FixtureImport = () => {
     }
 
     setImportDone(true);
-    toast({ title: "Fixtures Imported", description: `${validRows.length} fixture(s) created.` });
+    toast({ title: "Fixtures Imported", description: `${validRows.length} fixture(s) seamlessly imported.` });
   };
 
   const downloadTemplate = () => {
-    const headers = ["round_number", "date", "time", "home_team", "away_team", "location", "competition", "notes"];
+    const headers = [
+      "round_number *", "round_name (optional)", "date *", "time *", "venue *", "pitch *", 
+      "grade *", "home_team *", "away_team (Leave blank for bye)", "umpire_1", "umpire_2"
+    ];
 
-    // Pre-fill row 2 with cascade values
-    const selectedTeamName = cascadeTeams.find((t) => t.id === selectedTeamId)?.name || "";
-    const prefillRow = headers.map((h) => {
-      if (h === "home_team") return selectedTeamName;
-      if (h === "competition") return selectedDivision;
-      return "";
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet([headers, prefillRow]);
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
     ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
 
-    // Allowed Values reference sheet
-    const scopedTeamNames = cascadeTeams.map((t) => t.name);
-    const refHeaders = ["Status", "Home Team / Away Team"];
-    const statusValues = ["scheduled"];
-    const maxLen = Math.max(statusValues.length, scopedTeamNames.length);
+    if (!ws["!dataValidation"]) (ws as any)["!dataValidation"] = [];
+    const validations: any[] = (ws as any)["!dataValidation"];
+    const maxRows = 200;
+
+    const addListValidation = (col: number, options: string[]) => {
+      if (options.length === 0) return;
+      const colLetter = XLSX.utils.encode_col(col);
+      validations.push({
+        sqref: `${colLetter}2:${colLetter}${maxRows}`,
+        type: "list",
+        formula1: `"${options.join(",")}"`,
+      });
+    };
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fixture Import");
+
+    // Allowed Values sheet
+    const refHeaders = ["Venue – Pitch", "Grade", "Teams", "Clubs (for umpires)"];
+    
+    const pitchesList = pitches
+      .filter(p => venues.some(v => v.id === p.venue_id && v.association_id === selectedAssociationId))
+      .map(p => {
+        const venue = venues.find(v => v.id === p.venue_id);
+        return venue ? `${venue.name} – ${p.name}` : p.name;
+      });
+    const gradesList = allAssocDivisions;
+    const teamsList = [...new Set(assocTeams.map(t => t.name.trim()))];
+    const clubsList = assocClubs.map(c => c.name);
+
+    const maxLen = Math.max(pitchesList.length, gradesList.length, teamsList.length, clubsList.length);
     const refData: string[][] = [refHeaders];
     for (let i = 0; i < maxLen; i++) {
-      refData.push([statusValues[i] || "", scopedTeamNames[i] || ""]);
+      refData.push([
+        pitchesList[i] || "",
+        gradesList[i] || "",
+        teamsList[i] || "",
+        clubsList[i] || ""
+      ]);
     }
     const refWs = XLSX.utils.aoa_to_sheet(refData);
-    refWs["!cols"] = refHeaders.map((h) => ({ wch: Math.max(h.length + 4, 24) }));
+    refWs["!cols"] = refHeaders.map((h) => ({ wch: Math.max(h.length + 4, 20) }));
     XLSX.utils.book_append_sheet(wb, refWs, "Allowed Values");
 
     XLSX.writeFile(wb, "fixture_import_template.xlsx");
@@ -383,89 +455,64 @@ const FixtureImport = () => {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Import Fixtures</h1>
-          <p className="text-muted-foreground">Upload a spreadsheet to create fixtures in bulk</p>
+          <h1 className="text-3xl font-bold tracking-tight">Bulk Fixture Import</h1>
+          <p className="text-muted-foreground">Upload a spreadsheet to import fixtures</p>
         </div>
       </div>
 
-      {/* Import Scope — Cascade Selector */}
+      {/* Scope Block */}
       <Card>
         <CardHeader><CardTitle className="text-lg">Import Scope</CardTitle></CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
               <Label>Association</Label>
-              <Select value={selectedAssociationId} onValueChange={handleAssociationChange} disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}>
+              <Select value={selectedAssociationId} onValueChange={setSelectedAssociationId} disabled={!isSuperAdmin && scopedAssociationIds.length <= 1}>
                 <SelectTrigger><SelectValue placeholder="Select association" /></SelectTrigger>
                 <SelectContent>
                   {availableAssociations.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Club</Label>
-              <Select value={selectedClubId} onValueChange={handleClubChange} disabled={!selectedAssociationId || cascadeClubs.length === 0}>
-                <SelectTrigger><SelectValue placeholder="All clubs" /></SelectTrigger>
-                <SelectContent>
-                  {cascadeClubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Division</Label>
-              <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={cascadeDivisions.length === 0}>
-                <SelectTrigger><SelectValue placeholder="All divisions" /></SelectTrigger>
-                <SelectContent>
-                  {cascadeDivisions.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Team</Label>
-              <Select value={selectedTeamId} onValueChange={setSelectedTeamId} disabled={cascadeTeams.length === 0}>
-                <SelectTrigger><SelectValue placeholder="All teams" /></SelectTrigger>
-                <SelectContent>
-                  {cascadeTeams.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            Rows outside the selected scope will be rejected. Association is the minimum required selection.
+            Association bounds teams and grade selections.
           </p>
         </CardContent>
       </Card>
 
-      {/* Upload */}
+      {/* Upload card */}
       <Card>
         <CardHeader><CardTitle className="text-lg">Upload Spreadsheet</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4 flex-wrap">
-            <Label htmlFor="fixture-upload" className="flex items-center gap-2 px-4 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+            <Label htmlFor="fixture-upload" className={`flex items-center gap-2 px-4 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${!selectedAssociationId && 'opacity-50 pointer-events-none'}`}>
               <Upload className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm">Choose .xlsx or .csv file</span>
             </Label>
-            <Input id="fixture-upload" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} disabled={!selectedAssociationId} />
-            <Button variant="outline" size="sm" onClick={downloadTemplate}>
+            <Input key={fileKey} id="fixture-upload" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} disabled={!selectedAssociationId} />
+            <Button variant="outline" size="sm" onClick={downloadTemplate} disabled={!selectedAssociationId}>
               <Download className="h-4 w-4 mr-1" />
               Download Template
             </Button>
             {fileName && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <FileSpreadsheet className="h-4 w-4" />{fileName}
+                <FileSpreadsheet className="h-4 w-4" />
+                {fileName}
+                <button
+                  onClick={() => { setFileName(""); setRows([]); setImportDone(false); setFileKey(k => k + 1); }}
+                  className="ml-1 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
-          </div>
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p>Supported formats: <span className="font-medium">.xlsx, .xls, .csv</span></p>
-            <p>Dates in DD/MM/YYYY format. One of home_team or away_team must match a team in the selected scope.</p>
-            <p>The template includes an "Allowed Values" reference sheet with valid team names and statuses.</p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Preview */}
-      {rows.length > 0 && (
+      {/* Preview Table */}
+      {rows.length > 0 && !importDone && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Preview ({rows.length} rows)</CardTitle>
@@ -487,13 +534,18 @@ const FixtureImport = () => {
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
                     <TableHead>Round</TableHead>
+                    <TableHead>Round Name</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Time</TableHead>
+                    <TableHead>Venue</TableHead>
+                    <TableHead>Pitch</TableHead>
+                    <TableHead>Grade</TableHead>
                     <TableHead>Home Team</TableHead>
                     <TableHead>Away Team</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead className="w-32">Status</TableHead>
+                    <TableHead>Umpire 1</TableHead>
+                    <TableHead>Umpire 2</TableHead>
+                    <TableHead>Bye</TableHead>
+                    <TableHead className="w-48">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -501,43 +553,28 @@ const FixtureImport = () => {
                     <TableRow key={r.row_number} className={r.errors.length > 0 ? "bg-destructive/5" : ""}>
                       <TableCell className="font-mono text-xs">{r.row_number}</TableCell>
                       <TableCell className="text-xs">{r.round_number}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{formatDateDisplay(r.date)}</TableCell>
+                      <TableCell className="text-xs">{r.round_name}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{r.date}</TableCell>
                       <TableCell className="text-xs">{r.time}</TableCell>
+                      <TableCell className="text-xs">{r.venue}</TableCell>
+                      <TableCell className="text-xs">{r.pitch}</TableCell>
+                      <TableCell className="text-xs">{r.grade}</TableCell>
                       <TableCell className="text-xs">{r.home_team}</TableCell>
                       <TableCell className="text-xs">{r.away_team}</TableCell>
-                      <TableCell className="text-xs">{r.location}</TableCell>
-                      <TableCell className="text-xs max-w-[100px] truncate">{r.notes}</TableCell>
+                      <TableCell className="text-xs">{r.is_bye ? "—" : r.umpire_1}</TableCell>
+                      <TableCell className="text-xs">{r.is_bye ? "—" : r.umpire_2}</TableCell>
+                      <TableCell className="text-xs">{r.is_bye ? "Yes" : "No"}</TableCell>
                       <TableCell>
                         {r.errors.length === 0 ? (
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
                         ) : (
                           <div className="space-y-0.5">
-                            {r.errors.map((err, i) => {
-                              const teamNotFoundMatch = err.match(/Neither '(.+?)' nor '(.+?)' found/);
-                              if (teamNotFoundMatch) {
-                                return (
-                                  <div key={i} className="flex items-start gap-1 flex-wrap">
-                                    <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
-                                    <span className="text-xs text-destructive">
-                                      Team not found:{" "}
-                                      <button className="underline text-primary font-medium" onClick={() => setCorrectionDialog({ originalName: teamNotFoundMatch[1], validTeams: Array.from(teamNameLookup.keys()) })}>
-                                        {teamNotFoundMatch[1]}
-                                      </button>
-                                      {" / "}
-                                      <button className="underline text-primary font-medium" onClick={() => setCorrectionDialog({ originalName: teamNotFoundMatch[2], validTeams: Array.from(teamNameLookup.keys()) })}>
-                                        {teamNotFoundMatch[2]}
-                                      </button>
-                                    </span>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div key={i} className="flex items-start gap-1">
-                                  <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
-                                  <span className="text-xs text-destructive">{err}</span>
-                                </div>
-                              );
-                            })}
+                            {r.errors.map((err, i) => (
+                              <div key={i} className="flex items-start gap-1">
+                                <XCircle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                                <span className="text-xs text-destructive">{err}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </TableCell>
@@ -550,7 +587,8 @@ const FixtureImport = () => {
         </Card>
       )}
 
-      {importDone && (
+      {/* Action Button / Result */}
+      {importDone ? (
         <Card>
           <CardContent className="py-6 text-center">
             <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
@@ -558,52 +596,13 @@ const FixtureImport = () => {
             <Button variant="link" onClick={() => navigate("/admin/fixtures")}>View Fixtures</Button>
           </CardContent>
         </Card>
-      )}
-
-      {rows.length > 0 && !importDone && (
-        <Button className="w-full" size="lg" disabled={submitting || validRows.length === 0} onClick={handleSubmit}>
-          {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-          {submitting ? "Importing..." : `Import ${validRows.length} Fixture(s)`}
-        </Button>
-      )}
-
-      {/* Correction Dialog */}
-      {correctionDialog && (
-        <AlertDialog open={!!correctionDialog} onOpenChange={(open) => !open && setCorrectionDialog(null)}>
-          <AlertDialogContent className="max-h-[80vh] overflow-y-auto">
-            <AlertDialogHeader>
-              <AlertDialogTitle>Replace '{correctionDialog.originalName}'</AlertDialogTitle>
-              <AlertDialogDescription>Select the correct team name. "Change All" will replace every instance in the import.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <div className="space-y-1 max-h-60 overflow-y-auto border rounded-md p-2">
-              {correctionDialog.validTeams.map((name) => (
-                <button
-                  key={name}
-                  className="w-full text-left px-3 py-2 rounded hover:bg-muted text-sm capitalize"
-                  onClick={() => {
-                    const original = correctionDialog.originalName.toLowerCase().trim();
-                    const replacement = name;
-                    setRows((prev) => {
-                      const updated = prev.map((r) => ({
-                        ...r,
-                        home_team: r.home_team.toLowerCase().trim() === original ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.home_team,
-                        away_team: r.away_team.toLowerCase().trim() === original ? replacement.charAt(0).toUpperCase() + replacement.slice(1) : r.away_team,
-                      }));
-                      return validate(updated.map(({ errors, team_id, opponent_name, is_home, ...rest }) => rest));
-                    });
-                    setCorrectionDialog(null);
-                    toast({ title: "Replaced", description: `All instances of '${correctionDialog.originalName}' updated.` });
-                  }}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      ) : (
+        rows.length > 0 && (
+          <Button className="w-full" size="lg" disabled={submitting || validRows.length === 0} onClick={handleSubmit}>
+            {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            {submitting ? "Importing..." : `Import ${validRows.length} Fixture(s)`}
+          </Button>
+        )
       )}
     </div>
   );

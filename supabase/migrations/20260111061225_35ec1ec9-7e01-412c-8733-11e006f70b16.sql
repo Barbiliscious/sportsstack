@@ -138,5 +138,5 @@ TO authenticated
 USING (has_role(auth.uid(), 'SUPER_ADMIN') OR has_role(auth.uid(), 'ASSOCIATION_ADMIN') OR has_role(auth.uid(), 'CLUB_ADMIN') OR has_role(auth.uid(), 'COACH') OR has_role(auth.uid(), 'TEAM_MANAGER'));
 
 -- Assign SUPER_ADMIN role to Aaron Mullane
-INSERT INTO user_roles (user_id, role) 
-VALUES ('8e30a71e-7a8a-4eda-a51a-19223fa3fc0b', 'SUPER_ADMIN');
+-- INSERT INTO user_roles (user_id, role) 
+-- VALUES ('8e30a71e-7a8a-4eda-a51a-19223fa3fc0b', 'SUPER_ADMIN');
