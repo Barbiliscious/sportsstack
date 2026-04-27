@@ -19,7 +19,6 @@ import { NotificationPreferencesSection } from "@/components/profile/Notificatio
 import { PersonalDetailsSection } from "@/components/profile/PersonalDetailsSection";
 import { TeamMembershipSection } from "@/components/profile/TeamMembershipSection";
 import { RequestAdditionalTeamDialog } from "@/components/profile/RequestAdditionalTeamDialog";
-import { PendingInvitesSection } from "@/components/profile/PendingInvitesSection";
 import { ProfilePhotoCropper } from "@/components/profile/ProfilePhotoCropper";
 import { StatsDetailDialog } from "@/components/profile/StatsDetailDialog";
 import { SetPrimaryTeamDialog } from "@/components/profile/SetPrimaryTeamDialog";
@@ -112,6 +111,7 @@ const Profile = () => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [memberships, setMemberships] = useState<TeamMembershipData[]>([]);
   const [pendingChangeRequest, setPendingChangeRequest] = useState<PrimaryChangeRequestData | null>(null);
+  const [allTeams, setAllTeams] = useState<Array<{id: string; name: string; clubId: string; clubName: string; associationId: string; associationName: string;}>>([]);
   const [loading, setLoading] = useState(true);
   
   const [isEditing, setIsEditing] = useState(false);
@@ -178,53 +178,79 @@ const Profile = () => {
     // Fetch team memberships with team, club, association details
     const { data: membershipData, error: membershipError } = await supabase
       .from("team_memberships")
-      .select(`
-        id,
-        team_id,
-        membership_type,
-        position,
-        jersey_number,
-        status,
-        teams:team_id (
-          id,
-          name,
-          clubs:club_id (
-            id,
-            name,
-            associations:association_id (
-              id,
-              name
-            )
-          )
-        )
-      `)
+      .select("id, team_id, membership_type, position, jersey_number, status")
       .eq("user_id", user.id);
 
     if (membershipError) {
       console.error("Error fetching memberships:", membershipError);
     } else if (membershipData) {
-      // Transform the data to match our interface
-      const transformed = membershipData.map((m: any) => ({
-        id: m.id,
-        team_id: m.team_id,
-        membership_type: m.membership_type,
-        position: m.position,
-        jersey_number: m.jersey_number,
-        status: m.status,
-        team: {
-          id: m.teams?.id || "",
-          name: m.teams?.name || "",
-          club: {
-            id: m.teams?.clubs?.id || "",
-            name: m.teams?.clubs?.name || "",
-            association: {
-              id: m.teams?.clubs?.associations?.id || "",
-              name: m.teams?.clubs?.associations?.name || "",
+      if (membershipData.length === 0) {
+        setMemberships([]);
+      } else {
+        const teamIds = membershipData.map((m: any) => m.team_id);
+        const { data: teamDetails } = await supabase
+          .from("teams")
+          .select("id, name, club_id, clubs(id, name, associations(id, name))")
+          .in("id", teamIds);
+
+        const teamMap = (teamDetails || []).reduce((acc: any, team: any) => {
+          acc[team.id] = team;
+          return acc;
+        }, {});
+
+        // Transform the data to match our interface
+        const transformed = membershipData.map((m: any) => {
+          const teamObj = teamMap[m.team_id];
+          // clubs could be an array or an object depending on PostgREST, but usually an object for many-to-one
+          const club = Array.isArray(teamObj?.clubs) ? teamObj.clubs[0] : teamObj?.clubs;
+          const association = Array.isArray(club?.associations) ? club.associations[0] : club?.associations;
+
+          return {
+            id: m.id,
+            team_id: m.team_id,
+            membership_type: m.membership_type,
+            position: m.position,
+            jersey_number: m.jersey_number,
+            status: m.status,
+            team: {
+              id: teamObj?.id || "",
+              name: teamObj?.name || "",
+              club: {
+                id: club?.id || "",
+                name: club?.name || "",
+                association: {
+                  id: association?.id || "",
+                  name: association?.name || "",
+                },
+              },
             },
-          },
-        },
+          };
+        });
+        setMemberships(transformed);
+      }
+    }
+
+    // Fetch all available teams with club and association info
+    const [{ data: assocData }, { data: clubData }, { data: teamData }] = await Promise.all([
+      supabase.from("associations").select("id, name").order("name"),
+      supabase.from("clubs").select("id, name, association_id").order("name"),
+      supabase.from("teams").select("id, name, club_id").order("name"),
+    ]);
+    if (teamData && clubData && assocData) {
+      const clubMap = Object.fromEntries(clubData.map((c: any) => [c.id, c]));
+      const assocMap = Object.fromEntries(assocData.map((a: any) => [a.id, a]));
+      setAllTeams(teamData.map((t: any) => {
+        const club = clubMap[t.club_id] ?? {};
+        const assoc = assocMap[club.association_id] ?? {};
+        return {
+          id: t.id,
+          name: t.name,
+          clubId: club.id ?? "",
+          clubName: club.name ?? "",
+          associationId: assoc.id ?? "",
+          associationName: assoc.name ?? "",
+        };
       }));
-      setMemberships(transformed);
     }
 
     // Fetch pending primary change requests
@@ -340,58 +366,60 @@ const Profile = () => {
   const handleSetPrimaryTeam = async (teamId: string) => {
     if (!user) return;
 
-    const hasPrimary = memberships.some(
+    const primaryMembership = memberships.find(
       (m) => m.membership_type === "PRIMARY" && m.status === "APPROVED"
     );
 
-    if (hasPrimary) {
-      // Create a change request
-      const primaryMembership = memberships.find(
-        (m) => m.membership_type === "PRIMARY" && m.status === "APPROVED"
-      );
+    // Get team info first for notifications
+    const { data: teamData } = await supabase
+      .from("teams")
+      .select("club_id, name")
+      .eq("id", teamId)
+      .single();
 
-      const { error } = await supabase.from("primary_change_requests").insert({
-        user_id: user.id,
-        from_team_id: primaryMembership?.team_id || null,
-        to_team_id: teamId,
-        status: "PENDING",
+    // Always insert a primary_change_request - works with or without existing primary
+    const { error } = await supabase.from("primary_change_requests").insert({
+      user_id: user.id,
+      from_team_id: primaryMembership?.team_id || null,
+      to_team_id: teamId,
+      status: "PENDING",
+    });
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to submit primary team request.",
+        variant: "destructive",
       });
+      return;
+    }
 
-      if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to submit change request.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Request Submitted",
-          description: "Your primary team change request has been submitted for approval.",
-        });
-        fetchData();
-      }
-    } else {
-      // No primary team - directly update the membership type
-      const { error } = await supabase
-        .from("team_memberships")
-        .update({ membership_type: "PRIMARY" })
-        .eq("user_id", user.id)
-        .eq("team_id", teamId);
-
-      if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to set primary team.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Primary Team Set",
-          description: "Your primary team has been updated.",
-        });
-        fetchData();
+    // Notify coach/manager of destination team and club admin
+    if (teamData) {
+      const [{ data: teamAdmins }, { data: clubAdmins }] = await Promise.all([
+        supabase.from("user_roles").select("user_id").eq("team_id", teamId).in("role", ["COACH", "TEAM_MANAGER"]),
+        supabase.from("user_roles").select("user_id").eq("club_id", teamData.club_id).eq("role", "CLUB_ADMIN"),
+      ]);
+      const recipientIds = [...(teamAdmins?.map((r: any) => r.user_id) ?? []), ...(clubAdmins?.map((r: any) => r.user_id) ?? [])].filter((id, i, arr) => arr.indexOf(id) === i);
+      const playerName = profile ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "A player" : "A player";
+      if (recipientIds.length > 0) {
+        await supabase.from("notifications").insert(
+          recipientIds.map((uid: string) => ({
+            user_id: uid,
+            type: "PRIMARY_TEAM_CHANGE_REQUEST",
+            title: "Primary Team Change Request",
+            message: `${playerName} has requested ${teamData.name} as their primary team.`,
+            team_id: teamId,
+          }))
+        );
       }
     }
+
+    toast({
+      title: "Request Submitted",
+      description: "Your primary team request has been sent for approval.",
+    });
+    fetchData();
   };
 
   const handleCancelChangeRequest = async () => {
@@ -616,28 +644,17 @@ const Profile = () => {
       }
     : null;
 
-  // Teams available for setting as primary (approved non-primary teams)
-  const teamsForPrimarySelection = approvedMemberships.map((m) => ({
-    id: m.team_id,
-    teamName: m.team.name,
-    clubName: m.team.club.name,
-    associationName: m.team.club.association.name,
-    position: m.position || undefined,
-    jerseyNumber: m.jersey_number || undefined,
-  }));
-
   // Transform pending memberships for invites section
-  const pendingInvites = pendingMemberships.map((m) => ({
-    id: m.id,
-    teamId: m.team_id,
-    teamName: m.team.name,
-    clubName: m.team.club.name,
-    type: m.membership_type === "FILL_IN" ? ("FILL_IN" as const) : ("PERMANENT" as const),
-    sentBy: "Coach",
-    sentAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "PENDING" as const,
-  }));
+  // Non-primary pending memberships for the Additional Teams section
+  const pendingAdditionalTeams = pendingMemberships
+    .filter((m) => m.membership_type !== "PRIMARY")
+    .map((m) => ({
+      id: m.id,
+      teamId: m.team_id,
+      teamName: m.team.name,
+      clubName: m.team.club.name,
+      type: m.membership_type,
+    }));
 
   const displayName = [formData.firstName, formData.lastName].filter(Boolean).join(" ") || user?.email || "User";
   const initials = (formData.firstName?.charAt(0) || user?.email?.charAt(0) || "U").toUpperCase();
@@ -693,14 +710,6 @@ const Profile = () => {
           </p>
         )}
         
-        {/* Pending memberships notice */}
-        {pendingMemberships.length > 0 && (
-          <div className="mt-3">
-            <Badge variant="secondary" className="text-xs">
-              {pendingMemberships.length} pending membership{pendingMemberships.length > 1 ? "s" : ""}
-            </Badge>
-          </div>
-        )}
         
         {/* User Roles Display */}
         <div className="flex flex-wrap gap-2 justify-center mt-3">
@@ -709,13 +718,6 @@ const Profile = () => {
           </Badge>
         </div>
       </div>
-
-      {/* Pending Invites */}
-      <PendingInvitesSection
-        invites={pendingInvites}
-        onAccept={handleAcceptInvite}
-        onDecline={handleDeclineInvite}
-      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-3 gap-4">
@@ -756,6 +758,16 @@ const Profile = () => {
         onSetPrimaryTeam={() => setSetPrimaryDialogOpen(true)}
         hasApprovedTeams={approvedMemberships.length > 0}
         onRequestAdditionalTeam={() => setRequestAdditionalDialogOpen(true)}
+        pendingAdditionalTeams={pendingAdditionalTeams}
+        onCancelAdditionalRequest={async (id) => {
+          const { error } = await supabase.from("team_memberships").delete().eq("id", id);
+          if (error) {
+            toast({ title: "Error", description: "Failed to cancel request.", variant: "destructive" });
+          } else {
+            toast({ title: "Cancelled", description: "Your team request has been cancelled." });
+            fetchData();
+          }
+        }}
       />
 
       {/* Personal Details with Edit */}
@@ -854,8 +866,6 @@ const Profile = () => {
       <SetPrimaryTeamDialog
         open={setPrimaryDialogOpen}
         onOpenChange={setSetPrimaryDialogOpen}
-        teams={teamsForPrimarySelection}
-        currentPrimaryTeamId={primaryMembership?.team_id}
         onConfirm={handleSetPrimaryTeam}
         isChangingPrimary={!!primaryMembership}
       />

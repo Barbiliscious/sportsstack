@@ -14,6 +14,7 @@ interface ScopedRole {
 
 interface AdminScope {
   loading: boolean;
+  scopeLoading: boolean;
   isSuperAdmin: boolean;
   isAnyAdmin: boolean;
   scopedRoles: ScopedRole[];
@@ -131,6 +132,7 @@ export function useAdminScope(): AdminScope {
 
   return {
     loading,
+    scopeLoading: loading,
     isSuperAdmin,
     isAnyAdmin,
     scopedRoles,

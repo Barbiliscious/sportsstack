@@ -16,6 +16,14 @@ interface TeamMembership {
   gameDate?: string;
 }
 
+interface PendingAdditionalTeam {
+  id: string;
+  teamId: string;
+  teamName: string;
+  clubName: string;
+  type: string;
+}
+
 interface PendingChangeRequest {
   id: string;
   fromTeamId: string | null;
@@ -33,6 +41,8 @@ interface TeamMembershipSectionProps {
   onRequestChange: () => void;
   onCancelRequest?: () => void;
   onSetPrimaryTeam?: () => void;
+  pendingAdditionalTeams?: Array<{id: string; teamId: string; teamName: string; clubName: string; type: string;}>;
+  onCancelAdditionalRequest?: (id: string) => void;
   onRequestAdditionalTeam?: () => void;
   onConfirmChange?: () => void;
   hasApprovedTeams: boolean;
@@ -45,6 +55,8 @@ export const TeamMembershipSection = ({
   onRequestChange,
   onCancelRequest,
   onSetPrimaryTeam,
+  pendingAdditionalTeams = [],
+  onCancelAdditionalRequest,
   onRequestAdditionalTeam,
   onConfirmChange,
   hasApprovedTeams,
@@ -61,7 +73,7 @@ export const TeamMembershipSection = ({
               Request Change
             </Button>
           )}
-          {!primaryTeam && !pendingChangeRequest && hasApprovedTeams && onSetPrimaryTeam && (
+          {!primaryTeam && !pendingChangeRequest && onSetPrimaryTeam && (
             <Button variant="outline" size="sm" onClick={onSetPrimaryTeam}>
               <Plus className="h-4 w-4 mr-2" />
               Set Primary Team
@@ -99,9 +111,7 @@ export const TeamMembershipSection = ({
               <Users className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground">No primary team</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {hasApprovedTeams
-                  ? "Click 'Set Primary Team' to choose your main team"
-                  : "Accept a team invite to set your primary team"}
+                {"Click \u0027Set Primary Team\u0027 above to choose your main team"}
               </p>
             </div>
           )}
@@ -111,7 +121,7 @@ export const TeamMembershipSection = ({
             <div className="mt-4 p-3 bg-muted rounded-lg border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <RefreshCw className={`h-4 w-4 text-accent ${pendingChangeRequest.status === "PENDING" ? "animate-spin" : ""}`} />
+                  <RefreshCw className="h-4 w-4 text-accent" />
                   <span className="text-sm font-medium text-foreground">
                     {pendingChangeRequest.status === "ADMIN_APPROVED"
                       ? "Change Approved â€” Confirm to Complete"
@@ -211,9 +221,38 @@ export const TeamMembershipSection = ({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No additional team memberships
-            </p>
+            pendingAdditionalTeams.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No additional team memberships
+              </p>
+            )
+          )}
+
+          {/* Pending additional team requests */}
+          {pendingAdditionalTeams.length > 0 && (
+            <div className={`space-y-2 ${extraTeams.length > 0 ? "mt-3 border-t border-border pt-3" : ""}`}>
+              {pendingAdditionalTeams.map((req) => (
+                <div key={req.id} className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-accent" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{req.teamName}</p>
+                      <p className="text-xs text-muted-foreground">{req.clubName} • Request pending approval</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs text-amber-500 border-amber-500/30 bg-amber-500/10">
+                      Pending
+                    </Badge>
+                    {onCancelAdditionalRequest && (
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onCancelAdditionalRequest(req.id)}>
+                        <X className="h-4 w-4 mr-1" />Cancel
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

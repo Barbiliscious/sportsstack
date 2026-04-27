@@ -50,7 +50,46 @@ const FixturesManagement = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [addForm, setAddForm] = useState({ team_id: "", opponent_name: "", game_date: "", game_time: "", location: "", round_number: "", status: "scheduled" });
+  const [allAssocTeams, setAllAssocTeams] = useState<{ id: string; name: string; club_id: string }[]>([]);
+  const uniqueAssocTeamNames = [...new Set(allAssocTeams.map(t => t.name.trim()))].sort();
+  const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
+  const [pitches, setPitches] = useState<{ id: string; name: string; venue_id: string }[]>([]);
+  const [clubs, setClubs] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    const loadRefData = async () => {
+      if (!selectedAssociationId) return;
+      const [cRes, vRes] = await Promise.all([
+        supabase.from("clubs").select("id, name").eq("association_id", selectedAssociationId),
+        supabase.from("venues").select("id, name").eq("association_id", selectedAssociationId),
+      ]);
+      const loadedClubs = cRes.data || [];
+      const loadedVenues = vRes.data || [];
+      setClubs(loadedClubs);
+      setVenues(loadedVenues);
+
+      if (loadedClubs.length > 0) {
+        const { data: tRes } = await supabase.from("teams").select("id, name, club_id").in("club_id", loadedClubs.map(c => c.id));
+        setAllAssocTeams(tRes || []);
+      } else {
+        setAllAssocTeams([]);
+      }
+
+      if (loadedVenues.length > 0) {
+        const { data: pRes } = await supabase.from("pitches").select("id, name, venue_id").in("venue_id", loadedVenues.map(v => v.id));
+        setPitches(pRes || []);
+      } else {
+        setPitches([]);
+      }
+    };
+    loadRefData();
+  }, [selectedAssociationId]);
+
+  const [addForm, setAddForm] = useState({
+    team_id: "", opponent_name: "", game_date: "", game_time: "",
+    venue_id: "", pitch_id: "", round_number: "", status: "scheduled",
+    umpire_club_1: "", umpire_club_2: "", is_bye: false
+  });
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterRound, setFilterRound] = useState("");
 
@@ -60,8 +99,29 @@ const FixturesManagement = () => {
     ? scopedTeamIds
     : [];
 
+  const [assocTeamIds, setAssocTeamIds] = useState<string[]>([]);
+  
+  useEffect(() => {
+    if (selectedAssociationId && teamIds.length === 0) {
+      const fetchAssocTeams = async () => {
+        const { data: clubs } = await supabase.from("clubs").select("id").eq("association_id", selectedAssociationId);
+        if (clubs && clubs.length > 0) {
+          const clubIds = clubs.map(c => c.id);
+          const { data: teams } = await supabase.from("teams").select("id").in("club_id", clubIds);
+          if (teams) setAssocTeamIds(teams.map(t => t.id));
+        } else {
+          setAssocTeamIds([]);
+        }
+      };
+      fetchAssocTeams();
+    } else {
+      setAssocTeamIds([]);
+    }
+  }, [selectedAssociationId, teamIds.join(",")]);
+
   const fetchGames = async () => {
-    if (teamIds.length === 0) {
+    const idsToUse = teamIds.length > 0 ? teamIds : assocTeamIds;
+    if (idsToUse.length === 0) {
       setGames([]);
       setLoading(false);
       return;
@@ -70,7 +130,7 @@ const FixturesManagement = () => {
     const { data } = await supabase
       .from("games")
       .select("*")
-      .in("team_id", teamIds)
+      .in("team_id", idsToUse)
       .order("game_date", { ascending: true });
     setGames((data as GameWithTeam[]) || []);
     setLoading(false);
@@ -78,7 +138,7 @@ const FixturesManagement = () => {
 
   useEffect(() => {
     fetchGames();
-  }, [teamIds.join(",")]);
+  }, [teamIds.join(","), assocTeamIds.join(",")]);
 
   const teamMap = new Map(teams.map((t) => [t.id, t]));
 
@@ -157,24 +217,44 @@ const FixturesManagement = () => {
   };
 
   const handleAddFixture = async () => {
-    if (!addForm.team_id || !addForm.opponent_name || !addForm.game_date) {
+    if (!addForm.team_id || (!addForm.is_bye && !addForm.opponent_name) || !addForm.game_date) {
       toast({ title: "Error", description: "Team, opponent and date are required.", variant: "destructive" });
       return;
     }
+
+    if (addForm.round_number) {
+      const { data: existing } = await supabase.from("games")
+        .select("id").eq("team_id", addForm.team_id)
+        .eq("round_number", parseInt(addForm.round_number)).limit(1);
+      if (existing && existing.length > 0) {
+        const confirmed = window.confirm(`A fixture for this team in Round ${addForm.round_number} already exists. Are you sure you want to add another?`);
+        if (!confirmed) return;
+      }
+    }
+
     const gameDate = addForm.game_time ? `${addForm.game_date}T${addForm.game_time}:00` : `${addForm.game_date}T00:00:00`;
     const { error } = await supabase.from("games").insert({
       team_id: addForm.team_id,
-      opponent_name: addForm.opponent_name,
+      opponent_name: addForm.is_bye ? "BYE" : addForm.opponent_name,
       game_date: gameDate,
       is_home: true,
-      location: addForm.location || null,
+      location: addForm.venue_id
+        ? `${venues.find(v => v.id === addForm.venue_id)?.name ?? ""}${addForm.pitch_id ? ` – ${pitches.find(p => p.id === addForm.pitch_id)?.name ?? ""}` : ""}`
+        : null,
       round_number: addForm.round_number ? parseInt(addForm.round_number) : null,
       status: addForm.status,
+      umpire_club_1: addForm.umpire_club_1 || null,
+      umpire_club_2: addForm.umpire_club_2 || null,
+      is_bye: addForm.is_bye,
     });
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Created", description: "Fixture added." });
     setAddDialogOpen(false);
-    setAddForm({ team_id: "", opponent_name: "", game_date: "", game_time: "", location: "", round_number: "", status: "scheduled" });
+    setAddForm({ 
+      team_id: "", opponent_name: "", game_date: "", game_time: "", 
+      venue_id: "", pitch_id: "", round_number: "", status: "scheduled",
+      umpire_club_1: "", umpire_club_2: "", is_bye: false
+    });
     fetchGames();
   };
 
@@ -379,18 +459,28 @@ const FixturesManagement = () => {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Team *</Label>
-              <Select value={addForm.team_id} onValueChange={(v) => setAddForm((p) => ({ ...p, team_id: v }))}>
+              <Select value={addForm.team_id || "__none__"} onValueChange={(v) => { if (v === "__none__") setAddForm((p) => ({ ...p, team_id: "" })); else setAddForm((p) => ({ ...p, team_id: v })); }}>
                 <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
                 <SelectContent>
-                  {teams.filter((t) => teamIds.includes(t.id)).map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{getTeamDisplayName(t)}</SelectItem>
-                  ))}
+                  <SelectItem value="__none__">— None —</SelectItem>
+                  {allAssocTeams
+                    .filter((t, idx, arr) => arr.findIndex(x => x.name.trim() === t.name.trim()) === idx)
+                    .map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Opponent *</Label>
-              <Input value={addForm.opponent_name} onChange={(e) => setAddForm((p) => ({ ...p, opponent_name: e.target.value }))} placeholder="Opponent name" />
+              <Select value={addForm.is_bye ? "BYE" : (addForm.opponent_name || "__none__")} onValueChange={(v) => { if (v === "__none__") setAddForm(p => ({ ...p, opponent_name: "", is_bye: false })); else if (v === "BYE") setAddForm(p => ({ ...p, opponent_name: "", is_bye: true })); else setAddForm(p => ({ ...p, opponent_name: v, is_bye: false })); }}>
+                <SelectTrigger><SelectValue placeholder="Select opponent" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— None —</SelectItem>
+                  <SelectItem value="BYE">BYE</SelectItem>
+                  {uniqueAssocTeamNames.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -404,14 +494,62 @@ const FixturesManagement = () => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Location</Label>
-                <Input value={addForm.location} onChange={(e) => setAddForm((p) => ({ ...p, location: e.target.value }))} placeholder="Ground name" />
+                <Label>Venue</Label>
+                <Select value={addForm.venue_id || "__none__"} onValueChange={(v) => { if (v === "__none__") setAddForm(p => ({ ...p, venue_id: "", pitch_id: "" })); else setAddForm(p => ({ ...p, venue_id: v, pitch_id: "" })); }}>
+                  <SelectTrigger><SelectValue placeholder="Select venue" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {venues.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label>Round</Label>
-                <Input type="number" value={addForm.round_number} onChange={(e) => setAddForm((p) => ({ ...p, round_number: e.target.value }))} placeholder="#" />
+                <Label>Pitch</Label>
+                <Select disabled={!addForm.venue_id} value={addForm.pitch_id || "__none__"} onValueChange={(v) => { if (v === "__none__") setAddForm(p => ({ ...p, pitch_id: "" })); else setAddForm(p => ({ ...p, pitch_id: v })); }}>
+                  <SelectTrigger><SelectValue placeholder="Select pitch" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {pitches.filter(p => p.venue_id === addForm.venue_id).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>Round</Label>
+              <Input type="number" value={addForm.round_number} onChange={(e) => setAddForm((p) => ({ ...p, round_number: e.target.value }))} placeholder="#" />
+            </div>
+            {!addForm.is_bye && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Umpire 1 (Club)</Label>
+                  <Select value={addForm.umpire_club_1 || "__none__"} onValueChange={(v) => { if (v === "__none__") setAddForm(p => ({ ...p, umpire_club_1: "" })); else setAddForm(p => ({ ...p, umpire_club_1: v })); }}>
+                    <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— None —</SelectItem>
+                      {clubs.map((c) => (
+                        <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Umpire 2 (Club)</Label>
+                  <Select value={addForm.umpire_club_2 || "__none__"} onValueChange={(v) => { if (v === "__none__") setAddForm(p => ({ ...p, umpire_club_2: "" })); else setAddForm(p => ({ ...p, umpire_club_2: v })); }}>
+                    <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— None —</SelectItem>
+                      {clubs.map((c) => (
+                        <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
